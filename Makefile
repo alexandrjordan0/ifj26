@@ -4,7 +4,7 @@
 # Translator: gcc 16.2.1
 
 CC = gcc
-CFLAGS = -std=c23 -pedantic -Wall -Wextra -O2 -g
+CFLAGS = -std=c2x -pedantic -Wall -Wextra -O2 -g
 TARGET = ifj26
 
 SRCS = main.c
