@@ -1,0 +1,28 @@
+# build.yml
+# IFJ26
+# Author: Alexandr Jordán (xjordaa00)
+# Translator: gcc 16.2.1
+
+name: Build Check
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up GCC
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gcc
+
+      - name: Run Makefile build
+        run: make
