@@ -8,11 +8,20 @@ CFLAGS = -std=c2x -pedantic -Wall -Wextra -O2 -g
 TARGET = ifj26
 
 SRCS = main.c
+OBJS = $(SRCS:.c=.o)
+
+.PHONY: all clean format
 
 all: $(TARGET)
 
-$(TARGET): $(SRCS)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRCS)
+$(TARGET): $(OBJS)
+	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
+
+%.o: %.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
+format:
+	clang-format -i $$(find . -maxdepth 1 -name "*.c" -o -name "*.h")
 
 clean: 
-	rm -f $(TARGET)
+	rm -f $(TARGET) *.o
