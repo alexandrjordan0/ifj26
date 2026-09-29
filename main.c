@@ -11,6 +11,7 @@ int main(int argc, char *argv[]) {
     (void)argv;
 
     // TODO init
+    // //pfsljkfsjlf
 
     printf(".IFJcode26\n");
 
