@@ -7,7 +7,7 @@ CC = gcc
 CFLAGS = -std=c2x -pedantic -Wall -Wextra -O2 -g
 TARGET = ifj26
 
-SRCS = main.c
+SRCS = $(wildcard src/*.c)
 OBJS = $(SRCS:.c=.o)
 
 .PHONY: all clean format
@@ -17,11 +17,11 @@ all: $(TARGET)
 $(TARGET): $(OBJS)
 	$(CC) $(CFLAGS) -o $(TARGET) $(OBJS)
 
-%.o: %.c
+src/%.o: src/%.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 format:
-	clang-format -i $$(find . -maxdepth 1 -name "*.c" -o -name "*.h")
+	clang-format -i src/*.c src/*.h
 
-clean: 
-	rm -f $(TARGET) *.o
+clean:
+	rm -f $(TARGET) src/*.o
