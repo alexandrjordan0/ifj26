@@ -2,7 +2,7 @@
 
 ## Základní informace a odpovědnost
 
-- Odpovědná osoba: člen týmu
+- Odpovědná osoba: Mates
 - Přiřazené soubory: src/parser.c a src/parser.h
 - Základní princip: metoda rekurzivního sestupu podle LL gramatiky
 - Zákaz generátorů: nástroje Bison a yacc jsou přísně zakázány

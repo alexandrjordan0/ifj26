@@ -2,7 +2,7 @@
 
 ## Základní informace a odpovědnost
 
-- Odpovědná osoba: člen týmu
+- Odpovědná osoba: Baestro
 - Přiřazené soubory: src/scanner.c a src/scanner.h
 - Základní princip: deterministický konečný automat
 - Zákaz generátorů: nástroje lex a flex jsou přísně zakázány

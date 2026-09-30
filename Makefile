@@ -1,5 +1,5 @@
-# Makefile
-# IFJ26
+# File: Makefile
+# Project: IFJ26
 # Authors: Alexandr Jordán (xjordaa00)
 # Translator: gcc 16.2.1
 

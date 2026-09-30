@@ -1,9 +1,9 @@
-# Modul Tabulka symbolů symtable a hashtable
+# Modul Tabulka symbolů symtabe a hashtable
 
 ## Základní informace a odpovědnost
 
-- Odpovědná osoba: člen týmu se zkušeností z IJC
-- Přiřazené soubory: src/hashtable.c a src/hashtable.h případně src/symtable.c a src/symtable.h
+- Odpovědná osoba: Girab
+- Přiřazené soubory: src/hashtable.c a src/hashtable.h
 - Varianta zadání: TRP izp což představuje tabulku s rozptýlenými položkami s otevřenou adresací
 - Přísný zákaz: na tuto vyhledávací datovou strukturu je podle pravidel projektu přísně zakázáno použít nástroje umělé inteligence
 
