@@ -5,6 +5,7 @@
 #ifndef SCANNER_H
 #define SCANNER_H
 
+#include "str.h"
 #include <stdbool.h>
 #include <stddef.h>
 
@@ -72,7 +73,7 @@ typedef enum {
 typedef struct {
     long long int_value;
     double double_value;
-    char *str_value;
+    string_t str_value;
 } Token_value;
 
 typedef struct {
