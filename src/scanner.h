@@ -5,13 +5,10 @@
 #ifndef SCANNER_H
 #define SCANNER_H
 
+#include "error.h"
 #include "str.h"
 #include <stdbool.h>
 #include <stddef.h>
-
-#define SCANNER_OK 0
-#define SCANNER_LEXICAL_ERROR 1
-#define SCANNER_INTERNAL_ERROR 99
 
 typedef enum {
     TOKEN_EOF,
@@ -87,7 +84,7 @@ typedef struct {
  * @param token pointer to Token
  * @return SCANNER_OK(0), SCANNER_LEXICAL_ERROR(1), SCANNER_INTERNAL_ERROR(99)
  */
-int get_next_token(Token *token);
+ErrorCode get_next_token(Token *token);
 
 /**
  * @brief frees allocated memory of token
