@@ -9,15 +9,16 @@
 #define MEM_MANAGER_H
 
 #include <stdio.h>
+#include <stdlib.h>
 
 // Structure of node
 typedef struct mem_node_t {
-    void *mem_prt;   // Pointer to the allocated memory
+    void *mem_ptr;   // Pointer to the allocated memory
     size_t mem_size; // Size of the allocated memory in bytes
     struct mem_node_t *next;
 } mem_node_t;
 
-// Structure of double linked-list
+// Structure of single linked-list
 typedef struct {
     mem_node_t *first; // Pointer to the first element in list
     unsigned size;     // Number of elements in list
@@ -31,7 +32,7 @@ typedef struct {
 void memory_init(mem_list_t *l);
 
 /**
- * @brief Allocates block of memory
+ * @brief Allocates block of memory and adds this element to list
  * @param l Pointer to structure mem_list_t
  * @param size is a number of bytes to allocate
  * @return generic void Pointer
