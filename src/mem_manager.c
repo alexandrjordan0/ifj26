@@ -9,7 +9,5 @@
 
 void memory_init(mem_list_t *l) {
     l->first = NULL;
-    l->last = NULL;
-    l->current = NULL;
     l->size = 0;
 }
