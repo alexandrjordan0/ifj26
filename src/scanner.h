@@ -60,14 +60,17 @@ typedef enum {
     TOKEN_ASSIGN, // =
     TOKEN_LEFTPAR,
     TOKEN_RIGHTPAR,
-    TOKEN_LEFTBRACE,
-    TOKEN_RIGHTBRACE,
+    TOKEN_INDENT,
+    TOKEN_DEDENT,
     TOKEN_COMMA,
     TOKEN_COLON,
-    TOKEN_SEMICOLON
+    TOKEN_SEMICOLON,
+    TOKEN_AT,        // @
+    TOKEN_DOT,       // .
+    TOKEN_UNDERSCORE // _
 } Token_type;
 
-typedef struct {
+typedef union {
     long long int_value;
     double double_value;
     string_t str_value;
@@ -77,12 +80,13 @@ typedef struct {
     Token_type type;
     Token_value value;
     int line;
+    int col;
 } Token;
 
 /**
  * @brief reads next token
  * @param token pointer to Token
- * @return SCANNER_OK(0), SCANNER_LEXICAL_ERROR(1), SCANNER_INTERNAL_ERROR(99)
+ * @return ERR_OK(0), ERR_LEXICAL(1), ERR_INTERNAL(99)
  */
 ErrorCode get_next_token(Token *token);
 
