@@ -6,6 +6,7 @@
  */
 
 #include "mem_manager.h"
+#include "error.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -25,17 +26,13 @@ void *mem_alloc(mem_list_t *l, size_t size) {
 
     mem_node_t *tmp_node = (mem_node_t *)malloc(sizeof(mem_node_t));
     if (tmp_node == NULL) {
-        /* TEMPORARY EXIT */
-        fprintf(stderr, "%d - Failed allocation for NEW ELEMENT (memory-manager)", 99);
-        exit(EXIT_FAILURE);
+        error_exit(ERR_INTERNAL, "Failed to allocate NEW ELEMENT (mem-manager)");
     }
 
     tmp_node->mem_ptr = (void *)malloc(size);
     if (tmp_node->mem_ptr == NULL) {
         free(tmp_node);
-        /* TEMPORARY EXIT */
-        fprintf(stderr, "%d - Failed allocation for MEMORY BLOCK (memory-manager)", 99);
-        exit(EXIT_FAILURE);
+        error_exit(ERR_INTERNAL, "Failed allocation for MEMORY BLOCK (memory-manager)");
     }
 
     tmp_node->next = l->first;
