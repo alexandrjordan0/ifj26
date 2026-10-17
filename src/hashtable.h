@@ -13,7 +13,7 @@ typedef struct Htable Htable;
 /**
  * @brief create new hashtable
  * @param capacity of hashtable
- * @return pointer to created hashtable, NULL if allocation error
+ * @return pointer to created hashtable, NULL if capacity == 0
  */
 Htable *hashtable_init(size_t capacity);
 
