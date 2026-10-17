@@ -29,7 +29,7 @@ typedef struct {
  * @param l Pointer to structure mem_list_t
  * @return void
  */
-void memory_init(mem_list_t *l);
+void mem_init(mem_list_t *l);
 
 /**
  * @brief Allocates block of memory and adds this element to list

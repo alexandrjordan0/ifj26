@@ -10,7 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void memory_init(mem_list_t *l) {
+void mem_init(mem_list_t *l) {
     if (l == NULL) {
         return;
     }
