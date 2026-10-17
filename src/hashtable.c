@@ -15,20 +15,20 @@ typedef struct {
 struct Htable {
     HtableItem **items;
     size_t capacity;
-    size_t length;
+    size_t count;
 };
 
 Htable *hashtable_init(size_t capacity) {
     if (capacity == 0) {
         return NULL;
     }
-    Htable *hashtable = calloc(capacity, sizeof(Htable));
+    Htable *hashtable = malloc(sizeof(Htable));
     if (hashtable == NULL) {
         error_exit(ERR_INTERNAL, "in hashtable.c allocation failure");
     }
     hashtable->capacity = capacity;
-    hashtable->length = 0;
-    hashtable->items = malloc(sizeof(HtableItem*) * capacity);
+    hashtable->count = 0;
+    hashtable->items = calloc(capacity, sizeof(HtableItem *));
     if (hashtable->items == NULL) {
         free(hashtable);
         error_exit(ERR_INTERNAL, "in hashtable.c allocation failure");
@@ -36,3 +36,16 @@ Htable *hashtable_init(size_t capacity) {
     return hashtable;
 }
 
+void hashtable_delete(Htable *hashtable) {
+    if (hashtable == NULL) {
+        return;
+    }
+    for (size_t i = 0; i < hashtable->capacity; i++) {
+        if (hashtable->items[i] != NULL) {
+            free(hashtable->items[i]->key);
+            free(hashtable->items[i]);
+        }
+    }
+    free(hashtable->items);
+    free(hashtable);
+}
