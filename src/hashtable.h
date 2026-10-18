@@ -11,7 +11,7 @@
 typedef struct Htable Htable;
 
 /**
- * @brief create new hashtable
+ * @brief create new hashtable, error_exit() if allocation failure
  * @param capacity of hashtable
  * @return pointer to created hashtable, NULL if capacity == 0
  */
@@ -29,7 +29,7 @@ void hashtable_delete(Htable *hashtable);
  * @param hashtable pointer to hashtable
  * @param value Pointer to added value, cant be NULL
  * @param key Pointer to string
- * @return 0 if OK, ERR_INTERNAL if allocation error, ERR_SEM_REDEF if key already exists
+ * @return 0 if OK, ERR_SEM_REDEF if key already exists
  */
 int hashtable_add(Htable *hashtable, void *value, const char *key);
 
