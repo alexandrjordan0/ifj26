@@ -31,7 +31,7 @@ typedef struct {
     const char *name;
     size_t param_count;
     Type *param_types; // array of param_count Types, NULL if param_count == 0
-    const char **param_names;
+    const char *const *param_names;
     Type return_type;
 } FuncInfo;
 
@@ -41,7 +41,7 @@ typedef struct SymTable SymTable;
  * @brief create symbol table
  * @return pointer to table, in case of allocation error terminates using error_exit(ERR_INTERNAL)
  */
-SymTable *symtable_init();
+SymTable *symtable_init(void);
 
 /**
  * @brief delete symbol table, free everything that symtable allocated itself
@@ -50,18 +50,27 @@ SymTable *symtable_init();
 void symtable_free(SymTable *st);
 
 /**
- * @brief add variable to symbol table
+ * @brief create new variable scope
+ */
+void symtable_scope_push(SymTable *st);
+
+/**
+ * @brief terminate deepest scope
+ */
+void symtable_scope_pop(SymTable *st);
+
+/**
+ * @brief add variable to symbol table into deepest scope
  * @param st symbol table
- * @param name name of variable, serves as key, must not be TYPE_UNKNOWN
- * @param type type of variable
- * @param is_mutable true if var; false if var/function parameter
- * @return ERR_OK if ok, ERR_SEM_REDEF if variable already exists, ERR_INTERNAL if reallocation
- * failure
+ * @param name name of variable, serves as key
+ * @param type type of variable, must not be TYPE_UNKNOWN
+ * @param is_mutable true if var; false if val/function parameter
+ * @return ERR_OK if ok, ERR_SEM_REDEF if variable already exists
  */
 ErrorCode symtable_add_var(SymTable *st, const char *name, Type type, bool is_mutable);
 
 /**
- * @brief find variable
+ * @brief find variable from deepest scope first
  * @param st pointer to symbol table
  * @param name serves as key
  * @return pointer to value, NULL if not found
@@ -69,11 +78,13 @@ ErrorCode symtable_add_var(SymTable *st, const char *name, Type type, bool is_mu
 VarInfo *symtable_find_var(SymTable *st, const char *name);
 
 /**
- * @brief add function to symbol table. Name, parameter names and types are copyed
- * @param TYPE_UNKNOWN if type is not specified
+ * @brief add function to symbol table. Name, parameter names and types are copied
+ * @param return_type TYPE_UNKNOWN if type is not specified
+ * @return ERR_OK if ok, ERR_SEM_REDEF if function already exists
  */
 ErrorCode symtable_add_func(SymTable *st, const char *name, size_t param_count,
-                            const Type *param_types, const char **param_names, Type return_type);
+                            const Type *param_types, const char *const *param_names,
+                            Type return_type);
 
 /**
  * @brief find function
