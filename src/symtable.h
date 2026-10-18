@@ -6,6 +6,7 @@
 #define SYMTABLE_H
 
 #include "error.h"
+#include <stdbool.h>
 #include <stddef.h>
 
 /** Types known during semantic analysis*/
@@ -60,11 +61,24 @@ void symtable_free(SymTable *st);
 ErrorCode symtable_add_var(SymTable *st, const char *name, Type type, bool is_mutable);
 
 /**
- * @brief return value from given key
+ * @brief find variable
  * @param st pointer to symbol table
  * @param name serves as key
  * @return pointer to value, NULL if not found
  */
 VarInfo *symtable_find_var(SymTable *st, const char *name);
+
+/**
+ * @brief add function to symbol table. Name, parameter names and types are copyed
+ * @param TYPE_UNKNOWN if type is not specified
+ */
+ErrorCode symtable_add_func(SymTable *st, const char *name, size_t param_count,
+                            const Type *param_types, const char **param_names, Type return_type);
+
+/**
+ * @brief find function
+ * @return pointer to value, NULL if not found
+ */
+FuncInfo *symtable_find_func(SymTable *st, const char *name);
 
 #endif
