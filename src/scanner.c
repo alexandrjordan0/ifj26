@@ -28,7 +28,7 @@ static bool pending_indent = false;
 typedef enum {
     S_START,
 
-    S_INDENT,
+    S_IDENT,
 
     S_ZERO, // "0" at beginning of int
     S_INT,
@@ -126,5 +126,95 @@ ErrorCode get_next_token(Token *token) {
 
     if (!str_init(&buf)) {
         return ERR_INTERNAL;
+    }
+
+    for (;;) {
+        // int c = look_next_char();
+
+        switch (state) {
+        case S_START:
+            break;
+
+        case S_IDENT:
+            break;
+
+        case S_ZERO:
+            break;
+
+        case S_INT:
+            break;
+
+        case S_INT_UNDERSCORE:
+            break;
+
+        case S_INT_DOT:
+            break;
+
+        case S_DOUBLE:
+            break;
+
+        case S_EXP:
+            break;
+
+        case S_EXP_SIGN:
+            break;
+
+        case S_EXP_DIGITS:
+            break;
+
+        case S_QUOTE1:
+            break;
+
+        case S_QUOTE2:
+            break;
+
+        case S_STRING:
+            break;
+
+        case S_STRING_ESC:
+            break;
+
+        case S_MLSTRING:
+            break;
+
+        case S_SLASH:
+            break;
+
+        case S_LINE_COMMENT:
+            break;
+
+        case S_BLOCK_COMMENT:
+            break;
+
+        case S_LT:
+            break;
+
+        case S_GT:
+            break;
+
+        case S_ASSIGN:
+            break;
+
+        case S_NOT:
+            break;
+
+        case S_AND:
+            break;
+
+        case S_OR:
+            break;
+
+        case S_LPAR:
+            break;
+        }
+    }
+}
+
+void token_free(Token *token) {
+    if (token == NULL) {
+        return;
+    }
+    if (token->type == TOKEN_IDENTIFIER || token->type == TOKEN_LIT_STRING) {
+        str_free(&token->value.str_value);
     }
 }
