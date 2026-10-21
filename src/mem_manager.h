@@ -40,6 +40,16 @@ void mem_init(mem_list_t *l);
 void *mem_alloc(mem_list_t *l, size_t size);
 
 /**
+ * @brief Reallocates block of memory already in list. If the pointer isn't already in list creates
+ * new one.
+ * @param l Pointer to structure mem_list_t
+ * @param ptr is a Pointer to memory block in linked list
+ * @param new_size is size in bytes that the user want to reallocate to
+ * @return generic void Pointer
+ */
+void *mem_realloc(mem_list_t *l, void *ptr, size_t new_size);
+
+/**
  * @brief Frees all allocated blocks of memory
  * @param l Pointer to structure mem_list_t
  * @return void

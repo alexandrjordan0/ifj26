@@ -24,15 +24,17 @@ void *mem_alloc(mem_list_t *l, size_t size) {
         return NULL;
     }
 
-    mem_node_t *tmp_node = (mem_node_t *)malloc(sizeof(mem_node_t));
+    mem_node_t *tmp_node = malloc(sizeof(mem_node_t));
     if (tmp_node == NULL) {
+        mem_free_all(l);
         error_exit(ERR_INTERNAL, "Failed to allocate NEW ELEMENT (mem-manager)");
     }
 
-    tmp_node->mem_ptr = (void *)malloc(size);
+    tmp_node->mem_ptr = malloc(size);
     if (tmp_node->mem_ptr == NULL) {
         free(tmp_node);
-        error_exit(ERR_INTERNAL, "Failed allocation for MEMORY BLOCK (memory-manager)");
+        mem_free_all(l);
+        error_exit(ERR_INTERNAL, "Failed allocation for MEMORY BLOCK (mem-manager)");
     }
 
     tmp_node->next = l->first;
@@ -41,6 +43,35 @@ void *mem_alloc(mem_list_t *l, size_t size) {
     tmp_node->mem_size = size;
 
     return tmp_node->mem_ptr;
+}
+
+void *mem_realloc(mem_list_t *l, void *ptr, size_t new_size) {
+    if (l == NULL) {
+        return NULL;
+    }
+
+    void *tmp_ptr;
+    if (ptr != NULL) {
+        tmp_ptr = realloc(ptr, new_size);
+        if (tmp_ptr == NULL) {
+            mem_free_all(l);
+            error_exit(ERR_INTERNAL, "Failed reallocation new MEMORY BLOCK (mem-manager)");
+        }
+
+        mem_node_t *tmp_node = l->first;
+        while (tmp_node != NULL) {
+            if (tmp_node->mem_ptr == ptr) {
+                tmp_node->mem_ptr = tmp_ptr;
+                tmp_node->mem_size = new_size;
+                break;
+            }
+            tmp_node = tmp_node->next;
+        }
+    } else {
+        tmp_ptr = mem_alloc(l, new_size);
+    }
+
+    return tmp_ptr;
 }
 
 void mem_free_all(mem_list_t *l) {
