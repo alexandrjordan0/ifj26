@@ -21,6 +21,44 @@ static int indent_stack[INDENT_STACK_MAX] = {0};
 static int pending_dedents = 0; // amount of DEDENT tokens to be emited
 static bool pending_indent = false;
 
+static int look_ahead[2];
+static int la_count = 0;
+
+static void fill_lookahead(int n) {
+    while (la_count < n) {
+        look_ahead[la_count++] = getc(stdin);
+    }
+}
+
+static int peek_char(void) {
+    fill_lookahead(1);
+    return look_ahead[0];
+}
+
+static int peek_char2(void) {
+    fill_lookahead(2);
+    return look_ahead[1];
+}
+
+int next_char(void) {
+    fill_lookahead(1);
+    int c = look_ahead[0];
+    look_ahead[0] = look_ahead[1];
+    la_count--;
+
+    if (c == '\n') {
+        line++;
+        col = 0;
+    } else if (c != EOF) {
+        col++;
+    }
+    return c;
+}
+
+static bool is_digit(int c) { return c >= '0' && c <= '9'; }
+static bool is_alpha(int c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+static bool is_ident_start(int c) { return is_alpha(c) || c == '_'; }
+static bool is_ident_char(int c) { return is_alpha(c) || is_digit(c) || c == '_'; }
 /*------------------------*/
 /* STATES OF AUTOMATA     */
 /*------------------------*/
@@ -129,11 +167,13 @@ ErrorCode get_next_token(Token *token) {
     }
 
     for (;;) {
-        // int c = look_next_char();
+        int c = peek_char();
 
         switch (state) {
+
         case S_START:
-            break;
+            token->line = line;
+            token->col = break;
 
         case S_IDENT:
             break;
