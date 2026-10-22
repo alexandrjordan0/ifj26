@@ -124,6 +124,98 @@ static const struct {
     {"false", TOKEN_KEYWORD_FALSE},
 };
 
+static Token_type keyword_or_ident(const char *s) {
+    for (size_t i = 0; i < sizeof keywords / sizeof keywords[0]; i++) {
+        if (strcmp(keywords[i].name, s) == 0) {
+            return keywords[i].type;
+        }
+    }
+    return TOKEN_IDENTIFIER;
+}
+
+static ErrorCode handle_indentation(void) {
+    int spaces = 0;
+    while (peek_char() == ' ') {
+        next_char();
+        spaces++;
+    }
+
+    int c = peek_char();
+
+    if (c == '\t') {
+        // tab error
+        while (peek_char() == ' ' || peek_char() == '\t' || peek_char() == '\r') {
+            next_char();
+        }
+        c = peek_char();
+        if (c == '\n' || c == EOF) {
+            return ERR_OK;
+        }
+        return ERR_LEXICAL;
+    }
+
+    bool blank = (c == '\n' || c == EOF || (c == '\r' && peek_char2() == '\n'));
+    bool comment_only = (c == '/' && peek_char2() == '/');
+    if (blank || comment_only) {
+        return ERR_OK;
+    }
+
+    if (spaces > indent_stack[indent_top]) {
+        if (indent_top + 1 >= INDENT_STACK_MAX) {
+            return ERR_INTERNAL;
+        }
+        indent_stack[indent_top++] = spaces;
+        pending_indent = true;
+    } else {
+        while (spaces < indent_stack[indent_top]) {
+            indent_top--;
+            pending_dedents++;
+        }
+        if (spaces != indent_stack[indent_top]) {
+            return ERR_LEXICAL;
+        }
+    }
+    return ERR_OK;
+}
+
+static ErrorCode emit(Token *token, string_t *buf, Token_type type) {
+    token->type = type;
+    str_free(buf);
+    return ERR_OK;
+}
+
+static ErrorCode lex_error(string_t *buf) {
+    str_free(buf);
+    return ERR_LEXICAL;
+}
+
+static ErrorCode finish_int(Token *token, string_t *buf) {
+    errno = 0;
+    long long v = strtoll(buf->data, NULL, 10);
+    bool overflow = (errno == ERANGE);
+    if (overflow) {
+        return lex_error(buf);
+    }
+    token->value.int_value = v;
+    return emit(token, buf, TOKEN_LIT_INT);
+}
+
+static ErrorCode finish_double(Token *token, string_t *buf) {
+    errno = 0;
+    double v = strtod(buf->data, NULL);
+    bool overflow = (errno == ERANGE && isinf(v));
+    if (overflow) {
+        return lex_error(buf);
+    }
+    token->value.double_value = v;
+    return emit(token, buf, TOKEN_LIT_DOUBLE);
+}
+
+static ErrorCode finish_string(Token *token, string_t *buf) {
+    token->type = TOKEN_LIT_STRING;
+    token->value.str_value = *buf;
+    return ERR_OK;
+}
 /*------------------------*/
 /* MAIN FUNCTION          */
 /*------------------------*/
@@ -141,20 +233,17 @@ ErrorCode get_next_token(Token *token) {
     // indentaion at the beginning of a line
     if (at_line_start) {
         at_line_start = false;
-        /*TODO
-         err = handle_indentation()
-         if (err != ERR_OK) {
+        err = handle_indentation();
+        if (err != ERR_OK) {
             return err;
-        }*/
+        }
     }
 
     // waiting indent/dedent
     if (pending_dedents > 0) {
         pending_dedents--;
         token->type = TOKEN_DEDENT;
-        if (err != ERR_OK) {
-            return err;
-        }
+        return ERR_OK;
     }
     if (pending_indent) {
         pending_indent = false;
@@ -173,27 +262,192 @@ ErrorCode get_next_token(Token *token) {
 
         case S_START:
             token->line = line;
-            token->col = break;
+            token->col = col + 1;
+
+            if (c == EOF) {
+                if (indent_top > 0) {
+                    indent_top--;
+                    return emit(token, &buf, TOKEN_DEDENT);
+                }
+                return emit(token, &buf, TOKEN_EOF);
+            }
+
+            next_char();
+            if (c == ' ' || c == '\t' || c == '\r') {
+                // skip whitespaces in line
+            } else if (c == '\n') {
+                at_line_start = true;
+                return emit(token, &buf, TOKEN_EOL);
+            } else if (c == '0') {
+                str_append_char(&buf, c);
+                state = S_ZERO;
+            } else if (is_digit(c)) {
+                str_append_char(&buf, c);
+                state = S_INT;
+            } else if (is_ident_start(c)) {
+                str_append_char(&buf, c);
+                state = S_IDENT;
+            } else if (c == '"') {
+                state = S_QUOTE1;
+            } else if (c == '/') {
+                state = S_SLASH;
+            } else if (c == '<') {
+                state = S_LT;
+            } else if (c == '>') {
+                state = S_GT;
+            } else if (c == '=') {
+                state = S_ASSIGN;
+            } else if (c == '!') {
+                state = S_NOT;
+            } else if (c == '&') {
+                state = S_AND;
+            } else if (c == '|') {
+                state = S_OR;
+            } else if (c == '(') {
+                state = S_LPAR;
+            } else if (c == '+') {
+                return emit(token, &buf, TOKEN_PLUS);
+            } else if (c == '-') {
+                return emit(token, &buf, TOKEN_MINUS);
+            } else if (c == '*') {
+                return emit(token, &buf, TOKEN_MUL);
+            } else if (c == ')') {
+                return emit(token, &buf, TOKEN_RIGHTPAR);
+            } else if (c == ',') {
+                return emit(token, &buf, TOKEN_COMMA);
+            } else if (c == ':') {
+                return emit(token, &buf, TOKEN_COLON);
+            } else if (c == ';') {
+                return emit(token, &buf, TOKEN_SEMICOLON);
+            } else if (c == '@') {
+                return emit(token, &buf, TOKEN_AT);
+            } else if (c == '.') {
+                return emit(token, &buf, TOKEN_DOT);
+            } else {
+                return lex_error(&buf); // unknown symbol
+            }
+
+            break;
 
         case S_IDENT:
+            if (is_ident_char(c)) {
+                next_char();
+                str_append_char(&buf, c);
+                break;
+            }
+            // ident ended
+            if (strcmp(buf.data, "_") == 0) {
+                return emit(token, &buf, TOKEN_UNDERSCORE);
+            }
+            token->type = keyword_or_ident(buf.data);
+            if (token->type == TOKEN_IDENTIFIER) {
+                token->value.str_value = buf;
+                return ERR_OK;
+            }
+            str_free(&buf);
+            return ERR_OK;
+
             break;
 
         case S_ZERO:
+            if (is_digit(c) || c == '_') {
+                return lex_error(&buf); // no leaading zeroes in integer lits
+            }
+            if (c == '.') {
+                next_char();
+                str_append_char(&buf, '.');
+                state = S_INT_DOT;
+            } else if (c == 'e' || c == 'E') {
+                next_char();
+                str_append_char(&buf, ((char)c));
+                state = S_EXP;
+            } else if (c == 'd' || c == 'D') {
+                next_char();
+                str_append_char(&buf, ((char)c));
+                return finish_double(token, &buf);
+            } else if (is_alpha(c)) {
+                return lex_error(&buf);
+            } else {
+                return finish_int(token, &buf);
+            }
             break;
 
         case S_INT:
+
+            if (is_digit(c)) {
+                next_char();
+                str_append_char(&buf, (char)c);
+            } else if (c == '_') {
+                if (!is_digit(peek_char2()))
+                    return lex_error(&buf);
+                next_char();
+                str_append_char(&buf, '_');
+                state = S_INT_UNDERSCORE;
+            } else if (c == '.') {
+                next_char();
+                str_append_char(&buf, '.');
+                state = S_INT_DOT;
+            } else if (c == 'e' || c == 'E') {
+                next_char();
+                str_append_char(&buf, (char)c);
+                state = S_EXP;
+            } else if (c == 'd' || c == 'D') {
+                next_char();
+                str_append_char(&buf, (char)c);
+                return finish_double(token, &buf);
+            } else if (is_alpha(c)) {
+                return lex_error(&buf);
+            } else {
+                return finish_int(token, &buf);
+            }
+
             break;
 
         case S_INT_UNDERSCORE:
+            if (!is_digit(c))
+                return lex_error(&buf);
+            next_char();
+            str_append_char(&buf, (char)c);
+            state = S_INT;
+
             break;
 
         case S_INT_DOT:
+            if (!is_digit(c))
+                return lex_error(&buf); // digits are required after '.'
+            next_char();
+            str_append_char(&buf, (char)c);
+            state = S_DOUBLE;
+
             break;
 
         case S_DOUBLE:
+            if (is_digit(c)) {
+                next_char();
+                str_append_char(&buf, (char)c);
+            } else if (c == '_') {
+                if (!is_digit(peek_char()))
+                    return lex_error(&buf);
+                next_char();
+                str_append_char(&buf, (char)c);
+            } else if (c == 'e' || c == 'E') {
+                next_char();
+                str_append_char(&buf, (char)c);
+                state = S_EXP;
+            } else if (c == 'd' || c == 'D') {
+                next_char();
+                str_append_char(&buf, (char)c);
+                return finish_double(token, &buf);
+            } else if (is_alpha(c)) {
+                return lex_error(&buf);
+            } else {
+                return finish_double(token, &buf);
+            }
+
             break;
 
         case S_EXP:
+
             break;
 
         case S_EXP_SIGN:
