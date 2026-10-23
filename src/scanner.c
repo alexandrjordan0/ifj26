@@ -6,6 +6,7 @@
 #include "str.h"
 
 #include <errno.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -20,6 +21,7 @@ static int indent_top = 0; // index of the top of the stack
 static int indent_stack[INDENT_STACK_MAX] = {0};
 static int pending_dedents = 0; // amount of DEDENT tokens to be emited
 static bool pending_indent = false;
+static int paren_depth = 0; // parentehsis nesting
 
 static int look_ahead[2];
 static int la_count = 0;
@@ -49,7 +51,7 @@ int next_char(void) {
     if (c == '\n') {
         line++;
         col = 0;
-    } else if (c != EOF) {
+    } else if (c != EOF && c != '\r') {
         col++;
     }
     return c;
@@ -134,48 +136,146 @@ static Token_type keyword_or_ident(const char *s) {
 }
 
 static ErrorCode handle_indentation(void) {
-    int spaces = 0;
-    while (peek_char() == ' ') {
-        next_char();
-        spaces++;
-    }
+    for (;;) {
+        int spaces = 0;
+        bool has_tab = false;
 
-    int c = peek_char();
-
-    if (c == '\t') {
-        // tab error
-        while (peek_char() == ' ' || peek_char() == '\t' || peek_char() == '\r') {
+        while (peek_char() == ' ') {
             next_char();
+            spaces++;
         }
-        c = peek_char();
-        if (c == '\n' || c == EOF) {
-            return ERR_OK;
-        }
-        return ERR_LEXICAL;
-    }
 
-    bool blank = (c == '\n' || c == EOF || (c == '\r' && peek_char2() == '\n'));
-    bool comment_only = (c == '/' && peek_char2() == '/');
-    if (blank || comment_only) {
-        return ERR_OK;
-    }
+        for (;;) {
+            int c = peek_char();
 
-    if (spaces > indent_stack[indent_top]) {
-        if (indent_top + 1 >= INDENT_STACK_MAX) {
-            return ERR_INTERNAL;
+            // Empty line
+            if (c == '\n') {
+                next_char();
+                goto next_line;
+            }
+
+            if (c == '\r' && peek_char2() == '\n') {
+                next_char();
+                next_char();
+                goto next_line;
+            }
+
+            if (c == EOF) {
+                return ERR_OK;
+            }
+
+            // Whitespace after indentation or a comment
+            if (c == ' ' || c == '\r') {
+                next_char();
+                continue;
+            }
+
+            if (c == '\t') {
+                has_tab = true;
+                next_char();
+                continue;
+            }
+
+            // Ignore a line comment
+            if (c == '/' && peek_char2() == '/') {
+                while (peek_char() != '\n' && peek_char() != EOF) {
+                    next_char();
+                }
+
+                if (peek_char() == '\n') {
+                    next_char();
+                }
+
+                goto next_line;
+            }
+
+            // Handle a block comment at the beginning of a line
+            if (c == '/' && peek_char2() == '*') {
+                int depth = 1;
+                bool has_newline = false;
+
+                next_char();
+                next_char();
+
+                while (depth > 0) {
+                    c = peek_char();
+
+                    if (c == EOF) {
+                        return ERR_LEXICAL;
+                    }
+
+                    if (c == '/' && peek_char2() == '*') {
+                        next_char();
+                        next_char();
+                        depth++;
+                    } else if (c == '*' && peek_char2() == '/') {
+                        next_char();
+                        next_char();
+                        depth--;
+                    } else {
+                        if (c == '\n') {
+                            has_newline = true;
+                        }
+
+                        next_char();
+                    }
+                }
+
+                // A multiline block comment acts as an EOL.
+                if (has_newline) {
+                    while (peek_char() == ' ' || peek_char() == '\t' || peek_char() == '\r') {
+                        next_char();
+                    }
+
+                    c = peek_char();
+
+                    if (c != '\n' && c != EOF) {
+                        return ERR_LEXICAL;
+                    }
+
+                    if (c == '\n') {
+                        next_char();
+                    }
+
+                    goto next_line;
+                }
+
+                // Single-line comment: check what follows it.
+                continue;
+            }
+
+            break;
         }
-        indent_stack[indent_top++] = spaces;
-        pending_indent = true;
-    } else {
-        while (spaces < indent_stack[indent_top]) {
-            indent_top--;
-            pending_dedents++;
-        }
-        if (spaces != indent_stack[indent_top]) {
+
+        // Tabs are forbidden before code on a non-empty line.
+        if (has_tab) {
             return ERR_LEXICAL;
         }
+
+        // Compare indentation with the previous level.
+        if (spaces > indent_stack[indent_top]) {
+            if (indent_top + 1 >= INDENT_STACK_MAX) {
+                return ERR_INTERNAL;
+            }
+
+            indent_stack[++indent_top] = spaces;
+            pending_indent = true;
+        } else {
+            while (spaces < indent_stack[indent_top]) {
+                indent_top--;
+                pending_dedents++;
+            }
+
+            if (spaces != indent_stack[indent_top]) {
+                return ERR_LEXICAL;
+            }
+        }
+
+        return ERR_OK;
+
+    next_line:
+        continue;
     }
-    return ERR_OK;
 }
 
 static ErrorCode emit(Token *token, string_t *buf, Token_type type) {
@@ -189,7 +289,22 @@ static ErrorCode lex_error(string_t *buf) {
     return ERR_LEXICAL;
 }
 
+static void remove_number_underscores(string_t *buf) {
+    size_t write = 0;
+
+    for (size_t read = 0; read < buf->length; read++) {
+        if (buf->data[read] != '_') {
+            buf->data[write++] = buf->data[read];
+        }
+    }
+
+    buf->data[write] = '\0';
+    buf->length = write;
+}
+
 static ErrorCode finish_int(Token *token, string_t *buf) {
+    remove_number_underscores(buf);
+
     errno = 0;
     long long v = strtoll(buf->data, NULL, 10);
     bool overflow = (errno == ERANGE);
@@ -201,6 +316,8 @@ static ErrorCode finish_int(Token *token, string_t *buf) {
 }
 
 static ErrorCode finish_double(Token *token, string_t *buf) {
+    remove_number_underscores(buf);
+
     errno = 0;
     double v = strtod(buf->data, NULL);
     bool overflow = (errno == ERANGE && isinf(v));
@@ -223,8 +340,8 @@ ErrorCode get_next_token(Token *token) {
     ErrorCode err;
     State state = S_START;
     string_t buf;
-    int quotes = 0;
     int depth = 0;
+    bool block_comment_has_new_line = false;
 
     memset(token, 0, sizeof *token);
     token->line = line;
@@ -239,6 +356,8 @@ ErrorCode get_next_token(Token *token) {
         }
     }
 
+    token->line = line;
+    token->col = 0;
     // waiting indent/dedent
     if (pending_dedents > 0) {
         pending_dedents--;
@@ -277,6 +396,10 @@ ErrorCode get_next_token(Token *token) {
                 // skip whitespaces in line
             } else if (c == '\n') {
                 at_line_start = true;
+                if (paren_depth > 0) {
+                    at_line_start = false;
+                    continue;
+                }
                 return emit(token, &buf, TOKEN_EOL);
             } else if (c == '0') {
                 str_append_char(&buf, c);
@@ -312,6 +435,9 @@ ErrorCode get_next_token(Token *token) {
             } else if (c == '*') {
                 return emit(token, &buf, TOKEN_MUL);
             } else if (c == ')') {
+                if (paren_depth > 0) {
+                    paren_depth--;
+                }
                 return emit(token, &buf, TOKEN_RIGHTPAR);
             } else if (c == ',') {
                 return emit(token, &buf, TOKEN_COMMA);
@@ -322,7 +448,14 @@ ErrorCode get_next_token(Token *token) {
             } else if (c == '@') {
                 return emit(token, &buf, TOKEN_AT);
             } else if (c == '.') {
-                return emit(token, &buf, TOKEN_DOT);
+                if (is_digit(peek_char())) {
+
+                    str_append_char(&buf, '.');
+
+                    state = S_INT_DOT;
+                } else {
+                    return emit(token, &buf, TOKEN_DOT);
+                }
             } else {
                 return lex_error(&buf); // unknown symbol
             }
@@ -426,10 +559,10 @@ ErrorCode get_next_token(Token *token) {
                 next_char();
                 str_append_char(&buf, (char)c);
             } else if (c == '_') {
-                if (!is_digit(peek_char()))
+                if (!is_digit(peek_char2()))
                     return lex_error(&buf);
                 next_char();
-                str_append_char(&buf, (char)c);
+                str_append_char(&buf, '_');
             } else if (c == 'e' || c == 'E') {
                 next_char();
                 str_append_char(&buf, (char)c);
@@ -447,58 +580,269 @@ ErrorCode get_next_token(Token *token) {
             break;
 
         case S_EXP:
+            if (c == '+' || c == '-') {
+                next_char();
+                str_append_char(&buf, (char)c);
+                state = S_EXP_SIGN;
+            } else if (is_digit(c)) {
+                next_char();
+                str_append_char(&buf, (char)c);
+                state = S_EXP_DIGITS;
+            } else {
+                return lex_error(&buf);
+            }
 
             break;
 
         case S_EXP_SIGN:
+            if (!is_digit(c))
+                return lex_error(&buf);
+            next_char();
+            str_append_char(&buf, (char)c);
+            state = S_EXP_DIGITS;
+
             break;
 
         case S_EXP_DIGITS:
+            if (is_digit(c)) {
+                next_char();
+                str_append_char(&buf, (char)c);
+            } else if (c == '_') {
+                if (!is_digit(peek_char2()))
+                    return lex_error(&buf);
+                next_char();
+                str_append_char(&buf, (char)c);
+            } else if (c == 'd' || c == 'D') {
+                next_char();
+                str_append_char(&buf, (char)c);
+                return finish_double(token, &buf);
+            } else if (is_alpha(c)) {
+                return lex_error(&buf);
+            } else {
+                return finish_double(token, &buf);
+            }
             break;
 
         case S_QUOTE1:
+            if (c == '"') {
+                next_char();
+                state = S_QUOTE2;
+            } else {
+                state = S_STRING;
+            }
+
             break;
 
         case S_QUOTE2:
+            if (c == '"') {
+                next_char();
+                state = S_MLSTRING;
+            } else {
+                return finish_string(token, &buf);
+            }
+
             break;
 
         case S_STRING:
+            if (c == EOF || c == '\n') {
+                return lex_error(&buf);
+            }
+            if (c == '"') {
+                next_char();
+                return finish_string(token, &buf);
+            }
+            if (c == '\\') {
+                next_char();
+                state = S_STRING_ESC;
+                break;
+            }
+            next_char();
+            str_append_char(&buf, (char)c);
+
             break;
 
-        case S_STRING_ESC:
+        case S_STRING_ESC: {
+            char escaped;
+            if (c == EOF) {
+                return lex_error(&buf);
+            }
+            next_char();
+            switch (c) {
+            case '\\':
+                escaped = '\\';
+                break;
+            case '"':
+                escaped = '"';
+                break;
+            case 'n':
+                escaped = '\n';
+                break;
+            case 'r':
+                escaped = '\r';
+                break;
+            case 't':
+                escaped = '\t';
+                break;
+            default:
+                return lex_error(&buf);
+            }
+            str_append_char(&buf, escaped);
+            state = S_STRING;
+
             break;
+        }
 
         case S_MLSTRING:
+            if (c == EOF) {
+                return lex_error(&buf);
+            }
+            if (c == '"') {
+                next_char();
+                if (peek_char() == '"' && peek_char2() == '"') {
+                    next_char();
+                    next_char();
+                    return finish_string(token, &buf);
+                }
+                str_append_char(&buf, '"');
+            } else {
+                next_char();
+                str_append_char(&buf, (char)c);
+            }
             break;
 
         case S_SLASH:
+            if (c == '/') {
+                next_char();
+                state = S_LINE_COMMENT;
+            } else if (c == '*') {
+                next_char();
+                depth = 1;
+                block_comment_has_new_line = false;
+                state = S_BLOCK_COMMENT;
+            } else {
+                return emit(token, &buf, TOKEN_DIV);
+            }
+
             break;
 
         case S_LINE_COMMENT:
+            if (c == EOF || c == '\n') {
+                state = S_START;
+            } else {
+                next_char();
+            }
+
             break;
 
         case S_BLOCK_COMMENT:
+            if (c == EOF) {
+                return lex_error(&buf);
+            }
+            if (c == '/' && peek_char2() == '*') {
+                next_char();
+                next_char();
+                depth++;
+            } else if (c == '*' && peek_char2() == '/') {
+                next_char();
+                next_char();
+                depth--;
+
+                if (depth == 0) {
+                    if (!block_comment_has_new_line) {
+                        state = S_START;
+                    } else {
+                        /* after a multiline comment, only whitespace
+                           may appear before the physical newline */
+                        while (peek_char() == ' ' || peek_char() == '\t' || peek_char() == '\r') {
+                            next_char();
+                        }
+
+                        c = peek_char();
+
+                        if (c != '\n' && c != EOF) {
+                            return lex_error(&buf);
+                        }
+
+                        token->line = line;
+                        token->col = col + 1;
+
+                        if (c == '\n') {
+                            next_char();
+                        }
+
+                        at_line_start = true;
+                        return emit(token, &buf, TOKEN_EOL);
+                    }
+                }
+            } else {
+                if (c == '\n') {
+                    block_comment_has_new_line = true;
+                }
+
+                next_char();
+            }
             break;
 
         case S_LT:
+            if (c == '=') {
+                next_char();
+                return emit(token, &buf, TOKEN_LESSOREQ);
+            }
+            return emit(token, &buf, TOKEN_LESSTHAN);
+
             break;
 
         case S_GT:
+            if (c == '=') {
+                next_char();
+                return emit(token, &buf, TOKEN_GREATEROREQ);
+            }
+            return emit(token, &buf, TOKEN_GREATERTHAN);
+
             break;
 
         case S_ASSIGN:
+            if (c == '=') {
+                next_char();
+                return emit(token, &buf, TOKEN_EQ);
+            }
+            return emit(token, &buf, TOKEN_ASSIGN);
+
             break;
 
         case S_NOT:
+            if (c == '=') {
+                next_char();
+                return emit(token, &buf, TOKEN_NEQ);
+            }
+            return emit(token, &buf, TOKEN_NOT);
+
             break;
 
         case S_AND:
+            if (c != '&')
+                return lex_error(&buf);
+            next_char();
+            return emit(token, &buf, TOKEN_AND);
+
             break;
 
         case S_OR:
+            if (c != '|')
+                return lex_error(&buf);
+            next_char();
+            return emit(token, &buf, TOKEN_OR);
+
             break;
 
         case S_LPAR:
+            if (c == ')') {
+                next_char();
+                return emit(token, &buf, TOKEN_LIT_UNIT);
+            }
+            paren_depth++;
+            return emit(token, &buf, TOKEN_LEFTPAR);
+
             break;
         }
     }
