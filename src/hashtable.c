@@ -4,7 +4,6 @@
 // Translator: gcc 14.2.0
 
 #include "hashtable.h"
-#include "error.h"
 #include <stdlib.h>
 
 typedef struct {
@@ -24,14 +23,14 @@ Htable *hashtable_init(size_t capacity) {
     }
     Htable *hashtable = malloc(sizeof(Htable));
     if (hashtable == NULL) {
-        error_exit(ERR_INTERNAL, "in hashtable.c allocation failure");
+       return NULL;
     }
     hashtable->capacity = capacity;
     hashtable->count = 0;
     hashtable->items = calloc(capacity, sizeof(HtableItem *));
     if (hashtable->items == NULL) {
         free(hashtable);
-        error_exit(ERR_INTERNAL, "in hashtable.c allocation failure");
+        return NULL;
     }
     return hashtable;
 }
@@ -49,3 +48,5 @@ void hashtable_delete(Htable *hashtable) {
     free(hashtable->items);
     free(hashtable);
 }
+
+

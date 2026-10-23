@@ -7,13 +7,14 @@
 #define HASHTABLE_H
 
 #include <stddef.h>
+#include <stdbool.h>
 
 typedef struct Htable Htable;
 
 /**
- * @brief create new hashtable, error_exit() if allocation failure
+ * @brief create new hashtable
  * @param capacity of hashtable
- * @return pointer to created hashtable, NULL if capacity == 0
+ * @return pointer to created hashtable, NULL if capacity == 0 or allocation failure
  */
 Htable *hashtable_init(size_t capacity);
 
@@ -29,9 +30,9 @@ void hashtable_delete(Htable *hashtable);
  * @param hashtable pointer to hashtable
  * @param value Pointer to added value, cant be NULL
  * @param key Pointer to string
- * @return 0 if OK, ERR_SEM_REDEF if key already exists
+ * @return true if OK, false if key already exists
  */
-int hashtable_add(Htable *hashtable, void *value, const char *key);
+bool hashtable_add(Htable *hashtable, void *value, const char *key);
 
 /**
  * @brief search for value of given key, value cant be NULL

@@ -24,6 +24,7 @@ typedef enum {
 typedef struct {
     Type type;
     bool is_mutable; // var => true; val, function parameter => false
+    int scope_depth;
 } VarInfo;
 
 /**Information about function */
@@ -33,13 +34,14 @@ typedef struct {
     Type *param_types; // array of param_count Types, NULL if param_count == 0
     const char *const *param_names;
     Type return_type;
+    bool is_defined; // true if function is already fully implemented, false otherwise
 } FuncInfo;
 
 typedef struct SymTable SymTable;
 
 /**
  * @brief create symbol table
- * @return pointer to table, in case of allocation error terminates using error_exit(ERR_INTERNAL)
+ * @return pointer to table, NULL if allocation failure
  */
 SymTable *symtable_init(void);
 
@@ -52,7 +54,7 @@ void symtable_free(SymTable *st);
 /**
  * @brief create new variable scope
  */
-void symtable_scope_push(SymTable *st);
+bool symtable_scope_push(SymTable *st);
 
 /**
  * @brief terminate deepest scope
@@ -65,7 +67,8 @@ void symtable_scope_pop(SymTable *st);
  * @param name name of variable, serves as key
  * @param type type of variable, must not be TYPE_UNKNOWN
  * @param is_mutable true if var; false if val/function parameter
- * @return ERR_OK if ok, ERR_SEM_REDEF if variable already exists
+ * @return ERR_OK if ok, ERR_SEM_REDEF if variable already exists, ERR_INTERNAL if allocation
+ * failure
  */
 ErrorCode symtable_add_var(SymTable *st, const char *name, Type type, bool is_mutable);
 
@@ -76,15 +79,23 @@ ErrorCode symtable_add_var(SymTable *st, const char *name, Type type, bool is_mu
  * @return pointer to value, NULL if not found
  */
 VarInfo *symtable_find_var(SymTable *st, const char *name);
+/**
+ * @brief find variable in deepest scope
+ * @param st pointer to symtable
+ * @param name serves as key
+ * @return pointer to value, NULL if is not declared in deepest scope
+ */
+VarInfo *symtable_find_var_current_scope(SymTable *st, const char *name);
 
 /**
  * @brief add function to symbol table. Name, parameter names and types are copied
  * @param return_type TYPE_UNKNOWN if type is not specified
- * @return ERR_OK if ok, ERR_SEM_REDEF if function already exists
+ * @return ERR_OK if ok, ERR_SEM_REDEF if function already exists, ERR_INTERNAL if allocation
+ * failure
  */
 ErrorCode symtable_add_func(SymTable *st, const char *name, size_t param_count,
                             const Type *param_types, const char *const *param_names,
-                            Type return_type);
+                            Type return_type, bool is_defined);
 
 /**
  * @brief find function
