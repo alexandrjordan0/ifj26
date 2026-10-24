@@ -10,17 +10,8 @@
 
 #include "error.h"
 #include "scanner.h"
-// TODO #include "symtable.h"
+#include "symtable.h"
 #include <stdbool.h>
-
-// TODO use symtable, after its done
-typedef enum {
-    EXPR_TYPE_NONE,
-    EXPR_TYPE_INT,
-    EXPR_TYPE_DOUBLE,
-    EXPR_TYPE_STRING,
-    EXPR_TYPE_BOOL
-} ExprDataType;
 
 // Symbols on the precedence stack
 typedef enum {
@@ -48,7 +39,8 @@ typedef enum {
 // Item on the precedence stack
 typedef struct PrecStackItem {
     PrecSymbol symbol;
-    ExprDataType data_type; // Type of nonterminal E for type checking and int2float
+    Type data_type;
+    int scope_depth;
     struct PrecStackItem *next;
 } PrecStackItem;
 
@@ -66,7 +58,6 @@ typedef struct {
  * expression.
  * @return ErrorCode 0 is OK 2 is syntactic error 3 to 7 are semantic or type errors 99 is internal.
  */
-// TODO ErrorCode parse_expression(Token *current_token, symtable_t *symtable, ExprDataType
-// *result_type);
+ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *result_type);
 
 #endif // PRECEDENCE_H
