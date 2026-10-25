@@ -59,7 +59,7 @@ void hashtable_delete(Htable *hashtable) {
     free(hashtable);
 }
 
-// linear placement of items, possible to upgrade to quadratic or double hash
+// linear placement of items, possible upgrade to quadratic or double hash
 static void place_item(HtableItem **items, size_t capacity, HtableItem *item) {
     size_t start = hash(item->key) % capacity;
     for (size_t i = 0; i < capacity; i++) {
@@ -88,4 +88,17 @@ bool hashtable_check_size(Htable *hashtable) {
     hashtable->capacity = hashtable->capacity * 2;
     hashtable->items = new_items;
     return true;
+}
+
+void *hashtable_search(Htable *hashtable, const char *key) {
+    size_t pos = hash(key) % hashtable->capacity;
+    for (size_t i = 0; i < hashtable->capacity; i++) {
+        if (hashtable->items[(pos + i) % hashtable->capacity] == NULL) {
+            return NULL;
+        }
+        if (strcmp(key, hashtable->items[(pos + i) % hashtable->capacity]->key) == 0) {
+            return hashtable->items[(pos + i) % hashtable->capacity]->value;
+        }
+    }
+    return NULL;
 }
