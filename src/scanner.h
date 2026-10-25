@@ -82,6 +82,10 @@ typedef struct {
     int line;
     int col;
 } Token;
+/**
+ * @brief resets scanner state
+ */
+void scanner_init(void);
 
 /**
  * @brief reads next token

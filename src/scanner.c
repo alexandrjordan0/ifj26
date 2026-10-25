@@ -26,6 +26,25 @@ static int paren_depth = 0; // parentehsis nesting
 static int look_ahead[2];
 static int la_count = 0;
 
+void scanner_init(void) {
+    line = 1;
+    col = 0;
+    at_line_start = true;
+
+    indent_top = 0;
+    memset(indent_stack, 0, sizeof indent_stack);
+    indent_stack[0] = 0;
+
+    pending_dedents = 0;
+    pending_indent = false;
+
+    paren_depth = 0;
+
+    look_ahead[0] = EOF;
+    look_ahead[1] = EOF;
+    la_count = 0;
+}
+
 static void fill_lookahead(int n) {
     while (la_count < n) {
         look_ahead[la_count++] = getc(stdin);
@@ -42,7 +61,7 @@ static int peek_char2(void) {
     return look_ahead[1];
 }
 
-int next_char(void) {
+static int next_char(void) {
     fill_lookahead(1);
     int c = look_ahead[0];
     look_ahead[0] = look_ahead[1];
@@ -337,6 +356,22 @@ static ErrorCode finish_string(Token *token, string_t *buf) {
 /* MAIN FUNCTION          */
 /*------------------------*/
 ErrorCode get_next_token(Token *token) {
+    if (pending_dedents > 0) {
+        pending_dedents--;
+        token->type = TOKEN_DEDENT;
+        token->line = line;
+        token->col = col + 1;
+        return ERR_OK;
+    }
+
+    if (pending_indent) {
+        pending_indent = false;
+        token->type = TOKEN_INDENT;
+        token->line = line;
+        token->col = col + 1;
+        return ERR_OK;
+    }
+
     ErrorCode err;
     State state = S_START;
     string_t buf;
@@ -356,8 +391,6 @@ ErrorCode get_next_token(Token *token) {
         }
     }
 
-    token->line = line;
-    token->col = 0;
     // waiting indent/dedent
     if (pending_dedents > 0) {
         pending_dedents--;
@@ -402,13 +435,22 @@ ErrorCode get_next_token(Token *token) {
                 }
                 return emit(token, &buf, TOKEN_EOL);
             } else if (c == '0') {
-                str_append_char(&buf, c);
+                if (!str_append_char(&buf, c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_ZERO;
             } else if (is_digit(c)) {
-                str_append_char(&buf, c);
+                if (!str_append_char(&buf, c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_INT;
             } else if (is_ident_start(c)) {
-                str_append_char(&buf, c);
+                if (!str_append_char(&buf, c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_IDENT;
             } else if (c == '"') {
                 state = S_QUOTE1;
@@ -450,7 +492,10 @@ ErrorCode get_next_token(Token *token) {
             } else if (c == '.') {
                 if (is_digit(peek_char())) {
 
-                    str_append_char(&buf, '.');
+                    if (!str_append_char(&buf, '.')) {
+                        str_free(&buf);
+                        return ERR_INTERNAL;
+                    }
 
                     state = S_INT_DOT;
                 } else {
@@ -465,7 +510,10 @@ ErrorCode get_next_token(Token *token) {
         case S_IDENT:
             if (is_ident_char(c)) {
                 next_char();
-                str_append_char(&buf, c);
+                if (!str_append_char(&buf, c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 break;
             }
             // ident ended
@@ -488,15 +536,24 @@ ErrorCode get_next_token(Token *token) {
             }
             if (c == '.') {
                 next_char();
-                str_append_char(&buf, '.');
+                if (!str_append_char(&buf, '.')) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_INT_DOT;
             } else if (c == 'e' || c == 'E') {
                 next_char();
-                str_append_char(&buf, ((char)c));
+                if (!str_append_char(&buf, ((char)c))) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_EXP;
             } else if (c == 'd' || c == 'D') {
                 next_char();
-                str_append_char(&buf, ((char)c));
+                if (!str_append_char(&buf, ((char)c))) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 return finish_double(token, &buf);
             } else if (is_alpha(c)) {
                 return lex_error(&buf);
@@ -509,24 +566,39 @@ ErrorCode get_next_token(Token *token) {
 
             if (is_digit(c)) {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             } else if (c == '_') {
                 if (!is_digit(peek_char2()))
                     return lex_error(&buf);
                 next_char();
-                str_append_char(&buf, '_');
+                if (!str_append_char(&buf, '_')) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_INT_UNDERSCORE;
             } else if (c == '.') {
                 next_char();
-                str_append_char(&buf, '.');
+                if (!str_append_char(&buf, '.')) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_INT_DOT;
             } else if (c == 'e' || c == 'E') {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_EXP;
             } else if (c == 'd' || c == 'D') {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 return finish_double(token, &buf);
             } else if (is_alpha(c)) {
                 return lex_error(&buf);
@@ -540,7 +612,10 @@ ErrorCode get_next_token(Token *token) {
             if (!is_digit(c))
                 return lex_error(&buf);
             next_char();
-            str_append_char(&buf, (char)c);
+            if (!str_append_char(&buf, (char)c)) {
+                str_free(&buf);
+                return ERR_INTERNAL;
+            }
             state = S_INT;
 
             break;
@@ -549,7 +624,10 @@ ErrorCode get_next_token(Token *token) {
             if (!is_digit(c))
                 return lex_error(&buf); // digits are required after '.'
             next_char();
-            str_append_char(&buf, (char)c);
+            if (!str_append_char(&buf, (char)c)) {
+                str_free(&buf);
+                return ERR_INTERNAL;
+            }
             state = S_DOUBLE;
 
             break;
@@ -557,19 +635,31 @@ ErrorCode get_next_token(Token *token) {
         case S_DOUBLE:
             if (is_digit(c)) {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             } else if (c == '_') {
                 if (!is_digit(peek_char2()))
                     return lex_error(&buf);
                 next_char();
-                str_append_char(&buf, '_');
+                if (!str_append_char(&buf, '_')) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             } else if (c == 'e' || c == 'E') {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_EXP;
             } else if (c == 'd' || c == 'D') {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 return finish_double(token, &buf);
             } else if (is_alpha(c)) {
                 return lex_error(&buf);
@@ -582,11 +672,17 @@ ErrorCode get_next_token(Token *token) {
         case S_EXP:
             if (c == '+' || c == '-') {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_EXP_SIGN;
             } else if (is_digit(c)) {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 state = S_EXP_DIGITS;
             } else {
                 return lex_error(&buf);
@@ -598,7 +694,10 @@ ErrorCode get_next_token(Token *token) {
             if (!is_digit(c))
                 return lex_error(&buf);
             next_char();
-            str_append_char(&buf, (char)c);
+            if (!str_append_char(&buf, (char)c)) {
+                str_free(&buf);
+                return ERR_INTERNAL;
+            }
             state = S_EXP_DIGITS;
 
             break;
@@ -606,15 +705,24 @@ ErrorCode get_next_token(Token *token) {
         case S_EXP_DIGITS:
             if (is_digit(c)) {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             } else if (c == '_') {
                 if (!is_digit(peek_char2()))
                     return lex_error(&buf);
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             } else if (c == 'd' || c == 'D') {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (!str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
                 return finish_double(token, &buf);
             } else if (is_alpha(c)) {
                 return lex_error(&buf);
@@ -644,7 +752,7 @@ ErrorCode get_next_token(Token *token) {
             break;
 
         case S_STRING:
-            if (c == EOF || c == '\n') {
+            if (c == EOF || c == '\n' || c == '\r') {
                 return lex_error(&buf);
             }
             if (c == '"') {
@@ -657,7 +765,10 @@ ErrorCode get_next_token(Token *token) {
                 break;
             }
             next_char();
-            str_append_char(&buf, (char)c);
+            if (!str_append_char(&buf, (char)c)) {
+                str_free(&buf);
+                return ERR_INTERNAL;
+            }
 
             break;
 
@@ -686,7 +797,10 @@ ErrorCode get_next_token(Token *token) {
             default:
                 return lex_error(&buf);
             }
-            str_append_char(&buf, escaped);
+            if (!str_append_char(&buf, escaped)) {
+                str_free(&buf);
+                return ERR_INTERNAL;
+            }
             state = S_STRING;
 
             break;
@@ -703,10 +817,16 @@ ErrorCode get_next_token(Token *token) {
                     next_char();
                     return finish_string(token, &buf);
                 }
-                str_append_char(&buf, '"');
+                if (!str_append_char(&buf, '"')) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             } else {
                 next_char();
-                str_append_char(&buf, (char)c);
+                if (c != '\r' && !str_append_char(&buf, (char)c)) {
+                    str_free(&buf);
+                    return ERR_INTERNAL;
+                }
             }
             break;
 
