@@ -42,4 +42,12 @@ bool hashtable_add(Htable *hashtable, void *value, const char *key);
  */
 void *hashtable_search(Htable *hashtable, const char *key);
 
+/**
+ * @brief function checks if hashtable is not filled above 70 % of capacity.
+ * If so, capacity is doubled.
+ * @param hashtable pointer to hashtable
+ * @return true if OK, false if allocation error
+  */
+bool hashtable_check_size(Htable *hashtable);
+
 #endif

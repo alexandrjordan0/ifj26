@@ -19,8 +19,8 @@ struct Htable {
 };
 
 // modified hash function from my IJC project
-unsigned int hash(const char *key) {
-    unsigned int h = 0;
+size_t hash(const char *key) {
+    size_t h = 0;
     const unsigned char *p;
     for (p = (const unsigned char *)key; *p != '\0'; p++)
         h = 65599 * h + *p;
@@ -59,3 +59,33 @@ void hashtable_delete(Htable *hashtable) {
     free(hashtable);
 }
 
+// linear placement of items, possible to upgrade to quadratic or double hash
+static void place_item(HtableItem **items, size_t capacity, HtableItem *item) {
+    size_t start = hash(item->key) % capacity;
+    for (size_t i = 0; i < capacity; i++) {
+        size_t pos = (i + start) % capacity;
+        if (items[pos] == NULL) {
+            items[pos] = item;
+            return;
+        }
+    }
+}
+
+bool hashtable_check_size(Htable *hashtable) {
+    if (hashtable->capacity * 7 >= hashtable->count * 10) {
+        return true;
+    }
+    HtableItem **new_items = calloc(hashtable->capacity * 2, sizeof(HtableItem *));
+    if (new_items == NULL) {
+        return false;
+    }
+    for (size_t i = 0; i < hashtable->capacity; i++) {
+        if (hashtable->items[i] != NULL) {
+            place_item(new_items, hashtable->capacity * 2, hashtable->items[i]);
+        }
+    }
+    free(hashtable->items);
+    hashtable->capacity = hashtable->capacity * 2;
+    hashtable->items = new_items;
+    return true;
+}
