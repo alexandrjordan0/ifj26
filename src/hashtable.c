@@ -5,6 +5,7 @@
 
 #include "hashtable.h"
 #include <stdlib.h>
+#include <string.h>
 
 typedef struct {
     char *key;
@@ -17,13 +18,22 @@ struct Htable {
     size_t count;
 };
 
+// modified hash function from my IJC project
+unsigned int hash(const char *key) {
+    unsigned int h = 0;
+    const unsigned char *p;
+    for (p = (const unsigned char *)key; *p != '\0'; p++)
+        h = 65599 * h + *p;
+    return h;
+}
+
 Htable *hashtable_init(size_t capacity) {
     if (capacity == 0) {
         return NULL;
     }
     Htable *hashtable = malloc(sizeof(Htable));
     if (hashtable == NULL) {
-       return NULL;
+        return NULL;
     }
     hashtable->capacity = capacity;
     hashtable->count = 0;
@@ -48,5 +58,4 @@ void hashtable_delete(Htable *hashtable) {
     free(hashtable->items);
     free(hashtable);
 }
-
 
