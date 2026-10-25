@@ -40,7 +40,6 @@ typedef enum {
 typedef struct PrecStackItem {
     PrecSymbol symbol;
     Type data_type;
-    int scope_depth;
     struct PrecStackItem *next;
 } PrecStackItem;
 
