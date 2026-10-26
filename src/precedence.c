@@ -6,7 +6,7 @@
  */
 
 #include "precedence.h"
-#include "codegenerator.h"
+// #include "codegenerator.h"
 #include <stdlib.h>
 
 typedef enum {
@@ -509,14 +509,14 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
                 return ERR_INTERNAL;
             }
 
-            // if literal or identificator, generate PUSH
-            if (input_sym == PREC_SYM_ID) {
-                if (current_token->type == TOKEN_IDENTIFIER) {
-                    gen_push_var(current_token->value.str_value.data, FRAME_LF, input_depth);
-                } else {
-                    gen_push_literal(current_token);
-                }
-            }
+            // TODO if literal or identificator, generate PUSH
+            // if (input_sym == PREC_SYM_ID) {
+            //     if (current_token->type == TOKEN_IDENTIFIER) {
+            //         gen_push_var(current_token->value.str_value.data, FRAME_LF, input_depth);
+            //     } else {
+            //         gen_push_literal(current_token);
+            //     }
+            // }
 
             // add input symbol to top
             if (!stack_push(stack, input_sym, input_type)) {
