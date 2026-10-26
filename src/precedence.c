@@ -6,12 +6,13 @@
  */
 
 #include "precedence.h"
+#include "codegenerator.h"
 #include <stdlib.h>
 
 typedef enum {
     CONV_NONE,     // no conversion
-    CONV_LEFT_INT, // store top and convert to float
-    CONV_RIGHT_INT // convert top to float
+    CONV_LEFT_INT, // left operand is second from top, convert it to float
+    CONV_RIGHT_INT // right operand is on top, convert it to float
 } ConversionType;
 
 typedef enum {
@@ -245,6 +246,26 @@ static ErrorCode token_to_prec_sym(Token *token, SymTable *sym_table, PrecSymbol
     return ERR_OK;
 }
 
+static bool is_binary_op(PrecSymbol symbol) {
+    switch (symbol) {
+    case PREC_SYM_PLUS:
+    case PREC_SYM_MINUS:
+    case PREC_SYM_MUL:
+    case PREC_SYM_DIV:
+    case PREC_SYM_EQ:
+    case PREC_SYM_NEQ:
+    case PREC_SYM_LT:
+    case PREC_SYM_GT:
+    case PREC_SYM_LTE:
+    case PREC_SYM_GTE:
+    case PREC_SYM_AND:
+    case PREC_SYM_OR:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static ErrorCode check_binary_types(PrecStackItem *expr1, PrecSymbol op, PrecStackItem *expr2,
                                     Type *res_type, ConversionType *out_conv) {
     if (expr1 == NULL || expr2 == NULL || res_type == NULL || out_conv == NULL) {
@@ -361,18 +382,205 @@ static ErrorCode check_binary_types(PrecStackItem *expr1, PrecSymbol op, PrecSta
     default:
         return ERR_SEM_TYPES;
     }
-
-    return ERR_OK;
 }
 
 static ErrorCode reduce(PrecStack *stack) {
-    (void)stack;
+    if (stack == NULL || stack->top == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    PrecStackItem *items[3] = {NULL, NULL, NULL};
+    int count = 0;
+
+    PrecStackItem *current = stack->top;
+    while (current != NULL && current->symbol != PREC_SYM_STOP) {
+        if (count < 3) {
+            items[count] = current;
+        }
+        count++;
+        current = current->next;
+    }
+
+    if (current == NULL || count < 1 || count > 3) {
+        return ERR_SYNTAX;
+    }
+
+    Type result_type = TYPE_UNKNOWN;
+
+    switch (count) {
+    case 1:
+        // E -> i
+        if (items[0]->symbol != PREC_SYM_ID) {
+            return ERR_SYNTAX;
+        }
+        result_type = items[0]->data_type;
+        break;
+    case 2:
+        // E -> ! E
+        if (items[1]->symbol == PREC_SYM_NOT && items[0]->symbol == PREC_SYM_NONTERM) {
+            if (items[0]->data_type != TYPE_BOOL) {
+                return ERR_SEM_TYPES;
+            }
+            result_type = TYPE_BOOL;
+            // TODO: codegen_not();
+            break;
+        }
+        return ERR_SYNTAX;
+    case 3:
+        if (items[2]->symbol == PREC_SYM_LPAR && items[1]->symbol == PREC_SYM_NONTERM &&
+            items[0]->symbol == PREC_SYM_RPAR) {
+            // E -> ( E )
+            result_type = items[1]->data_type;
+            break;
+        } else if (items[2]->symbol == PREC_SYM_NONTERM && is_binary_op(items[1]->symbol) &&
+                   items[0]->symbol == PREC_SYM_NONTERM) {
+            // E-> E op E
+            PrecSymbol op = items[1]->symbol;
+            ConversionType conv = CONV_NONE;
+
+            ErrorCode err = check_binary_types(items[2], op, items[0], &result_type, &conv);
+            if (err != ERR_OK) {
+                return err;
+            }
+
+            // TODO codegen conv a op
+            break;
+        }
+        return ERR_SYNTAX;
+    default:
+        return ERR_SYNTAX;
+    }
+
+    // cleanup
+    for (int i = 0; i < count; i++) {
+        stack_pop(stack);
+    }
+    stack_pop(stack);
+
+    if (!stack_push(stack, PREC_SYM_NONTERM, result_type)) {
+        return ERR_INTERNAL;
+    }
+
     return ERR_OK;
 }
 
 ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *result_type) {
-    (void)current_token;
-    (void)symtable;
-    (void)result_type;
-    return ERR_OK;
+    if (current_token == NULL || symtable == NULL || result_type == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    PrecStack prec_stack;
+    PrecStack *stack = &prec_stack;
+    stack_init(stack);
+
+    if (!stack_push(stack, PREC_SYM_DOLLAR, TYPE_UNKNOWN)) {
+        return ERR_INTERNAL;
+    }
+
+    ErrorCode status = ERR_OK;
+
+    while (true) {
+        PrecStackItem *top_term = stack_top_terminal(stack);
+        if (top_term == NULL) {
+            stack_free(stack);
+            return ERR_INTERNAL;
+        }
+
+        PrecSymbol input_sym = PREC_SYM_DOLLAR;
+        Type input_type = TYPE_UNKNOWN;
+        int input_depth = 0;
+        status = token_to_prec_sym(current_token, symtable, &input_sym, &input_type, &input_depth);
+        if (status != ERR_OK) {
+            stack_free(stack);
+            return status;
+        }
+
+        if (top_term->symbol == PREC_SYM_DOLLAR && input_sym == PREC_SYM_DOLLAR) {
+            break;
+        }
+
+        PrecAction act = prec_table[top_term->symbol][input_sym];
+
+        switch (act) {
+        // <
+        case ACT_SHIFT:
+            if (!stack_insert_stop_after_top_terminal(stack)) {
+                stack_free(stack);
+                return ERR_INTERNAL;
+            }
+
+            // if literal or identificator, generate PUSH
+            if (input_sym == PREC_SYM_ID) {
+                if (current_token->type == TOKEN_IDENTIFIER) {
+                    gen_push_var(current_token->value.str_value.data, FRAME_LF, input_depth);
+                } else {
+                    gen_push_literal(current_token);
+                }
+            }
+
+            // add input symbol to top
+            if (!stack_push(stack, input_sym, input_type)) {
+                stack_free(stack);
+                return ERR_INTERNAL;
+            }
+
+            // free current token and read new from scanner
+            token_free(current_token);
+            status = get_next_token(current_token);
+            if (status != ERR_OK) {
+                stack_free(stack);
+                return status;
+            }
+
+            break;
+        // =
+        case ACT_EQUAL:
+            // add input symbol to top
+            if (!stack_push(stack, input_sym, input_type)) {
+                stack_free(stack);
+                return ERR_INTERNAL;
+            }
+
+            // free current token and read new from scanner
+            token_free(current_token);
+            status = get_next_token(current_token);
+            if (status != ERR_OK) {
+                stack_free(stack);
+                return status;
+            }
+
+            break;
+        // >
+        case ACT_REDUCE:
+            // call reduce and check status
+            status = reduce(stack);
+            if (status != ERR_OK) {
+                stack_free(stack);
+                return status;
+            }
+
+            break;
+
+        // covers ACT_ERROR
+        default:
+            stack_free(stack);
+            return ERR_SYNTAX;
+        }
+    }
+
+    // check results
+    if (stack->top == NULL || stack->top->next == NULL || stack->top->next->next != NULL) {
+        stack_free(stack);
+        return ERR_SYNTAX;
+    }
+
+    if (stack->top->symbol != PREC_SYM_NONTERM || stack->top->next->symbol != PREC_SYM_DOLLAR) {
+        status = ERR_SYNTAX;
+    } else {
+        *result_type = stack->top->data_type;
+    }
+
+    // free stack
+    stack_free(stack);
+    return status;
 }
