@@ -220,7 +220,8 @@ static ErrorCode token_to_prec_sym(Token *token, SymTable *sym_table, PrecSymbol
 
     // identifier
     case TOKEN_IDENTIFIER: {
-        VarInfo *var = symtable_find_var(sym_table, token->value.str_value.data);
+        // TODO VarInfo *var = symtable_find_var(sym_table, token->value.str_value.data);
+        VarInfo *var = NULL;
 
         if (var == NULL) {
             return ERR_SEM_UNDEF;
