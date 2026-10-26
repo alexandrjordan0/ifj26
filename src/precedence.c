@@ -15,18 +15,16 @@ typedef enum {
 } ConversionType;
 
 typedef enum {
+    ACT_ERROR = 0,
     ACT_SHIFT, // <
     ACT_EQUAL, // =
-    ACT_REDUC, // >
-    ACT_ERROR
+    ACT_REDUCE // >
 } PrecAction;
 
 #define PREC_TABLE_SIZE (PREC_SYM_DOLLAR + 1)
 
 // TODO: NAVRHNOUT TABULKU A PREPSAT
-static const PrecAction prec_table[PREC_TABLE_SIZE][PREC_TABLE_SIZE] = {
-    // TODO
-    [0 ... PREC_TABLE_SIZE - 1][0 ... PREC_TABLE_SIZE - 1] = ACT_ERROR};
+static const PrecAction prec_table[PREC_TABLE_SIZE][PREC_TABLE_SIZE] = {0};
 
 static void stack_init(PrecStack *stack) {
     if (stack == NULL) {
@@ -266,50 +264,33 @@ static ErrorCode check_binary_types(PrecStackItem *expr1, PrecSymbol op, PrecSta
             *res_type = TYPE_STRING;
             return ERR_OK;
         }
-        // for number continue to shared logic with - and *
+        // for number continue to shared logic with - , * and /
         [[fallthrough]];
     case PREC_SYM_MINUS:
     case PREC_SYM_MUL:
-        if (type1 == TYPE_INT && type2 == TYPE_INT) {
-            *res_type = TYPE_INT;
-            return ERR_OK;
-        }
-        if (type1 == TYPE_DOUBLE && type2 == TYPE_DOUBLE) {
-            *res_type = TYPE_DOUBLE;
-            return ERR_OK;
-        }
-        if (type1 == TYPE_INT && type2 == TYPE_DOUBLE) {
-            *out_conv = CONV_LEFT_INT;
-            *res_type = TYPE_DOUBLE;
-            return ERR_OK;
-        }
-        if (type1 == TYPE_DOUBLE && type2 == TYPE_INT) {
-            *out_conv = CONV_RIGHT_INT;
-            *res_type = TYPE_DOUBLE;
-            return ERR_OK;
-        }
-        return ERR_SEM_TYPES;
-
     case PREC_SYM_DIV:
         if (type1 == TYPE_INT && type2 == TYPE_INT) {
-            // IDIVS
             *res_type = TYPE_INT;
             return ERR_OK;
         }
+
         if (type1 == TYPE_DOUBLE && type2 == TYPE_DOUBLE) {
             *res_type = TYPE_DOUBLE;
             return ERR_OK;
         }
+
         if (type1 == TYPE_INT && type2 == TYPE_DOUBLE) {
             *out_conv = CONV_LEFT_INT;
             *res_type = TYPE_DOUBLE;
             return ERR_OK;
         }
+
         if (type1 == TYPE_DOUBLE && type2 == TYPE_INT) {
             *out_conv = CONV_RIGHT_INT;
             *res_type = TYPE_DOUBLE;
             return ERR_OK;
         }
+
         return ERR_SEM_TYPES;
 
     case PREC_SYM_LT:
@@ -320,24 +301,29 @@ static ErrorCode check_binary_types(PrecStackItem *expr1, PrecSymbol op, PrecSta
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         if (type1 == TYPE_DOUBLE && type2 == TYPE_DOUBLE) {
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         if (type1 == TYPE_INT && type2 == TYPE_DOUBLE) {
             *out_conv = CONV_LEFT_INT;
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         if (type1 == TYPE_DOUBLE && type2 == TYPE_INT) {
             *out_conv = CONV_RIGHT_INT;
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         if (type1 == TYPE_STRING && type2 == TYPE_STRING) {
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         return ERR_SEM_TYPES;
 
     case PREC_SYM_EQ:
@@ -347,16 +333,19 @@ static ErrorCode check_binary_types(PrecStackItem *expr1, PrecSymbol op, PrecSta
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         if (type1 == TYPE_INT && type2 == TYPE_DOUBLE) {
             *out_conv = CONV_LEFT_INT;
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         if (type1 == TYPE_DOUBLE && type2 == TYPE_INT) {
             *out_conv = CONV_RIGHT_INT;
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         return ERR_SEM_TYPES;
 
     // BOOLTHEN
@@ -366,11 +355,24 @@ static ErrorCode check_binary_types(PrecStackItem *expr1, PrecSymbol op, PrecSta
             *res_type = TYPE_BOOL;
             return ERR_OK;
         }
+
         return ERR_SEM_TYPES;
 
     default:
         return ERR_SEM_TYPES;
     }
 
+    return ERR_OK;
+}
+
+static ErrorCode reduce(PrecStack *stack) {
+    (void)stack;
+    return ERR_OK;
+}
+
+ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *result_type) {
+    (void)current_token;
+    (void)symtable;
+    (void)result_type;
     return ERR_OK;
 }
