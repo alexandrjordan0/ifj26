@@ -102,3 +102,29 @@ void *hashtable_search(Htable *hashtable, const char *key) {
     }
     return NULL;
 }
+
+HtStatus hashtable_add(Htable *hashtable, void *value, const char *key) {
+    void *con = hashtable_search(hashtable, key);
+    if (con != NULL) {
+        return HT_EXISTS;
+    }
+    bool ok = hashtable_check_size(hashtable);
+    if (ok == false) {
+        return HT_NOMEM;
+    }
+    HtableItem *new_item = malloc(sizeof(HtableItem));
+    if (new_item == NULL) {
+        return HT_NOMEM;
+    }
+
+    new_item->key = malloc(strlen(key) + 1);
+    if (new_item->key == NULL) {
+        free(new_item);
+        return HT_NOMEM;
+    }
+    hashtable->count++;
+    strcpy(new_item->key, key);
+    new_item->value = value;
+    place_item(hashtable->items, hashtable->capacity, new_item);
+    return HT_OK;
+}

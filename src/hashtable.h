@@ -9,6 +9,12 @@
 #include <stddef.h>
 #include <stdbool.h>
 
+typedef enum {
+    HT_OK,
+    HT_EXISTS,
+    HT_NOMEM
+} HtStatus;
+
 typedef struct Htable Htable;
 
 /**
@@ -30,9 +36,9 @@ void hashtable_delete(Htable *hashtable);
  * @param hashtable pointer to hashtable
  * @param value Pointer to added value, cant be NULL
  * @param key Pointer to string
- * @return true if OK, false if key already exists
+ * @return HT_OK if ok, HT_EXISTS  if key already exists, HT_NOMEM if allocation failure
  */
-bool hashtable_add(Htable *hashtable, void *value, const char *key);
+HtStatus hashtable_add(Htable *hashtable, void *value, const char *key);
 
 /**
  * @brief search for value of given key, value cant be NULL
@@ -42,12 +48,6 @@ bool hashtable_add(Htable *hashtable, void *value, const char *key);
  */
 void *hashtable_search(Htable *hashtable, const char *key);
 
-/**
- * @brief function checks if hashtable is not filled above 70 % of capacity.
- * If so, capacity is doubled.
- * @param hashtable pointer to hashtable
- * @return true if OK, false if allocation error
-  */
-bool hashtable_check_size(Htable *hashtable);
+
 
 #endif
