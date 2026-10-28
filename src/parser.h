@@ -13,6 +13,7 @@
 #include "str.h"
 #include <stdio.h>
 
+#if 0
 // For simulating derivation tree
 typedef struct tree_node_t {
     Token token_t;
@@ -27,64 +28,70 @@ typedef struct tree_node_t {
  * @return void
  */
 void tree_init(void);
+#endif
 
-int parse_program();
+ErrorCode parse_program();
 
-int parse_prolog();
+ErrorCode parse_prolog();
 
-int parse_func_set();
+ErrorCode parse_func_set();
 
-int parse_func();
+ErrorCode parse_func();
 
-int parse_main_anot();
+ErrorCode parse_main_anot();
 
-int parse_param_set();
+ErrorCode parse_param_set();
 
-int parse_param_next();
+ErrorCode parse_param_next();
 
-int parse_param();
+ErrorCode parse_param();
 
-int parse_type();
+ErrorCode parse_type();
 
-int parse_return_type();
+ErrorCode parse_return_type();
 
-int parse_body();
+ErrorCode parse_body();
 
-int parse_variable();
+ErrorCode parse_variable();
 
-int parse_variable_type();
+ErrorCode parse_variable_type();
 
-int parse_value();
+ErrorCode parse_value();
 
-int parse_value_type();
+ErrorCode parse_value_type();
 
-int parse_block();
+ErrorCode parse_block();
 
-int parse_command_set();
+ErrorCode parse_command_set();
 
-int parse_command();
+ErrorCode parse_command();
 
-int parse_command_id();
+ErrorCode parse_command_id();
 
-int parse_func_call();
+ErrorCode parse_func_call();
 
-int parse_term();
+ErrorCode parse_term();
 
-int parse_arg_set();
+ErrorCode parse_arg_set();
 
-int parse_arg_next();
+ErrorCode parse_arg_next();
 
-int parse_if_statement();
+ErrorCode parse_if_statement();
 
-int parse_if_body();
+ErrorCode parse_if_body();
 
-int parse_if_block();
+ErrorCode parse_if_block();
 
-int parse_else_block();
+ErrorCode parse_else_block();
 
-int parse_whlile_statement();
+ErrorCode parse_whlile_statement();
 
-int parse_while_body();
+ErrorCode parse_while_body();
 
-int parse_while_block();
+ErrorCode parse_while_block();
+
+ErrorCode parse_volsemcol();
+
+ErrorCode parse_return_command();
+
 #endif
