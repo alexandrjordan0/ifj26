@@ -10,16 +10,31 @@
 
 #define FUNCS_CAPACITY 10
 #define SCOPE_CAPACITY 10
+
 typedef struct Scope Scope;
+
 struct Scope {
-    Htable *vars;
+    Htable *variables;
     Scope *parent;
     int depth;
 };
+
 struct SymTable {
-    Htable *funcs;
+    Htable *functions;
     Scope *top;
 };
+
+static void func_free(void *ptr) {
+    FuncInfo *p = (FuncInfo *)ptr;
+    char **names = (char **)p->param_names;
+    free((char *)p->name);
+    for (size_t i = 0; i < p->param_count; i++) {
+        free(names[i]);
+    }
+    free(names);
+    free(p->param_types);
+    free(p);
+}
 
 SymTable *symtable_init(void) {
     SymTable *new_symtable = malloc(sizeof(SymTable));
@@ -31,9 +46,19 @@ SymTable *symtable_init(void) {
         free(new_symtable);
         return NULL;
     }
-    new_symtable->funcs = funcs;
+    new_symtable->functions = funcs;
     new_symtable->top = NULL;
     return new_symtable;
+}
+
+void symtable_free(SymTable *st) {
+    if (st != NULL) {
+        while (st->top != NULL) {
+            symtable_scope_pop(st);
+        }
+        hashtable_delete(st->functions, func_free);
+        free(st);
+    }
 }
 
 bool symtable_scope_push(SymTable *st) {
@@ -41,8 +66,8 @@ bool symtable_scope_push(SymTable *st) {
     if (new_scope == NULL) {
         return false;
     }
-    new_scope->vars = hashtable_init(SCOPE_CAPACITY);
-    if (new_scope->vars == NULL) {
+    new_scope->variables = hashtable_init(SCOPE_CAPACITY);
+    if (new_scope->variables == NULL) {
         free(new_scope);
         return false;
     }
@@ -58,6 +83,6 @@ void symtable_scope_pop(SymTable *st) {
     }
     Scope *old = st->top;
     st->top = old->parent;
-    hashtable_delete(old->vars, free);
+    hashtable_delete(old->variables, free);
     free(old);
 }
