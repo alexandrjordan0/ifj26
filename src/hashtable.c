@@ -45,13 +45,16 @@ Htable *hashtable_init(size_t capacity) {
     return hashtable;
 }
 
-void hashtable_delete(Htable *hashtable) {
+void hashtable_delete(Htable *hashtable, void (*free_value)(void *)) {
     if (hashtable == NULL) {
         return;
     }
     for (size_t i = 0; i < hashtable->capacity; i++) {
         if (hashtable->items[i] != NULL) {
             free(hashtable->items[i]->key);
+            if (free_value != NULL) {
+                free_value(hashtable->items[i]->value);
+            }
             free(hashtable->items[i]);
         }
     }
