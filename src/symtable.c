@@ -20,6 +20,7 @@ struct SymTable {
     Htable *funcs;
     Scope *top;
 };
+
 SymTable *symtable_init(void) {
     SymTable *new_symtable = malloc(sizeof(SymTable));
     if (new_symtable == NULL) {
@@ -33,4 +34,30 @@ SymTable *symtable_init(void) {
     new_symtable->funcs = funcs;
     new_symtable->top = NULL;
     return new_symtable;
+}
+
+bool symtable_scope_push(SymTable *st) {
+    Scope *new_scope = malloc(sizeof(Scope));
+    if (new_scope == NULL) {
+        return false;
+    }
+    new_scope->vars = hashtable_init(SCOPE_CAPACITY);
+    if (new_scope->vars == NULL) {
+        free(new_scope);
+        return false;
+    }
+    new_scope->parent = st->top;
+    new_scope->depth = st->top ? st->top->depth + 1 : 0;
+    st->top = new_scope;
+    return true;
+}
+
+void symtable_scope_pop(SymTable *st) {
+    if (st->top == NULL) {
+        return;
+    }
+    Scope *old = st->top;
+    st->top = old->parent;
+    hashtable_delete(old->vars, free);
+    free(old);
 }
