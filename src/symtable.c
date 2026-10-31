@@ -86,3 +86,46 @@ void symtable_scope_pop(SymTable *st) {
     hashtable_delete(old->variables, free);
     free(old);
 }
+
+ErrorCode symtable_add_var(SymTable *st, const char *name, Type type, bool is_mutable) {
+    if (st->top == NULL) {
+        return ERR_INTERNAL;
+    }
+    VarInfo *var = malloc(sizeof(VarInfo));
+    if (var == NULL) {
+        return ERR_INTERNAL;
+    }
+    var->is_mutable = is_mutable;
+    var->scope_depth = st->top->depth;
+    var->type = type;
+    HtStatus add = hashtable_add(st->top->variables, var, name);
+    if (add == HT_NOMEM) {
+        free(var);
+        return ERR_INTERNAL;
+    } else if (add == HT_EXISTS) {
+        free(var);
+        return ERR_SEM_REDEF;
+    }
+    return ERR_OK;
+}
+
+VarInfo *symtable_find_var(SymTable *st, const char *name) {
+    Scope *sc = st->top;
+    VarInfo *var = NULL;
+    while (sc != NULL) {
+        var = hashtable_search(sc->variables, name);
+        if (var != NULL) {
+            return var;
+        }
+        sc = sc->parent;
+    }
+    return NULL;
+}
+
+VarInfo *symtable_find_var_current_scope(SymTable *st, const char *name) {
+    if (st->top == NULL) {
+        return NULL;
+    }
+    VarInfo *var = hashtable_search(st->top->variables, name);
+    return var;
+}
