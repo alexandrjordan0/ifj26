@@ -24,8 +24,37 @@ typedef enum {
 
 #define PREC_TABLE_SIZE (PREC_SYM_DOLLAR + 1)
 
-// TODO: NAVRHNOUT TABULKU A PREPSAT
-static const PrecAction prec_table[PREC_TABLE_SIZE][PREC_TABLE_SIZE] = {0};
+#define S ACT_SHIFT
+#define E ACT_EQUAL
+#define R ACT_REDUCE
+#define X ACT_ERROR
+
+static const PrecAction prec_table[PREC_TABLE_SIZE][PREC_TABLE_SIZE] = {
+    /*       +  -  *  / == !=  <  > <= >=  ! -u && ||  (  )  i  $ */
+    /* +  */ {R, R, S, S, R, R, R, R, R, R, S, S, R, R, S, R, S, R},
+    /* -  */ {R, R, S, S, R, R, R, R, R, R, S, S, R, R, S, R, S, R},
+    /* *  */ {R, R, R, R, R, R, R, R, R, R, S, S, R, R, S, R, S, R},
+    /* /  */ {R, R, R, R, R, R, R, R, R, R, S, S, R, R, S, R, S, R},
+    /* == */ {S, S, S, S, X, X, S, S, S, S, S, S, R, R, S, R, S, R},
+    /* != */ {S, S, S, S, X, X, S, S, S, S, S, S, R, R, S, R, S, R},
+    /* <  */ {S, S, S, S, R, R, X, X, X, X, S, S, R, R, S, R, S, R},
+    /* >  */ {S, S, S, S, R, R, X, X, X, X, S, S, R, R, S, R, S, R},
+    /* <= */ {S, S, S, S, R, R, X, X, X, X, S, S, R, R, S, R, S, R},
+    /* >= */ {S, S, S, S, R, R, X, X, X, X, S, S, R, R, S, R, S, R},
+    /* !  */ {R, R, R, R, R, R, R, R, R, R, S, S, R, R, S, R, S, R},
+    /* -u */ {R, R, R, R, R, R, R, R, R, R, S, S, R, R, S, R, S, R},
+    /* && */ {S, S, S, S, S, S, S, S, S, S, S, S, R, R, S, R, S, R},
+    /* || */ {S, S, S, S, S, S, S, S, S, S, S, S, S, R, S, R, S, R},
+    /* (  */ {S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, E, S, X},
+    /* )  */ {R, R, R, R, R, R, R, R, R, R, X, X, R, R, X, R, X, R},
+    /* i  */ {R, R, R, R, R, R, R, R, R, R, X, X, R, R, X, R, X, R},
+    /* $  */ {S, S, S, S, S, S, S, S, S, S, S, S, S, S, S, X, S, X},
+};
+
+#undef S
+#undef E
+#undef R
+#undef X
 
 static void stack_init(PrecStack *stack) {
     if (stack == NULL) {
@@ -426,6 +455,15 @@ static ErrorCode reduce(PrecStack *stack) {
             // TODO: codegen_not();
             break;
         }
+        // E -> - E
+        if (items[1]->symbol == PREC_SYM_UMINUS && items[0]->symbol == PREC_SYM_NONTERM) {
+            if (items[0]->data_type != TYPE_INT && items[0]->data_type != TYPE_DOUBLE) {
+                return ERR_SEM_TYPES;
+            }
+            result_type = items[0]->data_type;
+            // TODO: codegen negation
+            break;
+        }
         return ERR_SYNTAX;
     case 3:
         if (items[2]->symbol == PREC_SYM_LPAR && items[1]->symbol == PREC_SYM_NONTERM &&
@@ -479,6 +517,8 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
     }
 
     ErrorCode status = ERR_OK;
+    // last shifted input symbol, decides between unary and binary minus
+    PrecSymbol prev_input = PREC_SYM_DOLLAR;
 
     while (true) {
         PrecStackItem *top_term = stack_top_terminal(stack);
@@ -494,6 +534,12 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
         if (status != ERR_OK) {
             stack_free(stack);
             return status;
+        }
+
+        // minus is binary only after an operand or )
+        if (input_sym == PREC_SYM_MINUS && prev_input != PREC_SYM_ID &&
+            prev_input != PREC_SYM_RPAR) {
+            input_sym = PREC_SYM_UMINUS;
         }
 
         if (top_term->symbol == PREC_SYM_DOLLAR && input_sym == PREC_SYM_DOLLAR) {
@@ -524,6 +570,7 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
                 stack_free(stack);
                 return ERR_INTERNAL;
             }
+            prev_input = input_sym;
 
             // free current token and read new from scanner
             token_free(current_token);
@@ -541,6 +588,7 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
                 stack_free(stack);
                 return ERR_INTERNAL;
             }
+            prev_input = input_sym;
 
             // free current token and read new from scanner
             token_free(current_token);
