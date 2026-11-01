@@ -6,8 +6,10 @@
 #ifndef HASHTABLE_H
 #define HASHTABLE_H
 
-#include <stddef.h>
 #include <stdbool.h>
+#include <stddef.h>
+
+typedef enum { HT_OK, HT_EXISTS, HT_NOMEM } HtStatus;
 
 typedef struct Htable Htable;
 
@@ -19,10 +21,11 @@ typedef struct Htable Htable;
 Htable *hashtable_init(size_t capacity);
 
 /**
- * @brief delete hashtable and keys, does not delete value
+ * @brief delete hashtable, keys and values
  * @param hashtable pointer to hashtable
+ * @param free_value pointer to function that frees value
  */
-void hashtable_delete(Htable *hashtable);
+void hashtable_delete(Htable *hashtable, void (*free_value)(void *));
 
 /**
  * @brief insert new item to hashtable, key is copied and hashtable owns it. The value must stay
@@ -30,9 +33,9 @@ void hashtable_delete(Htable *hashtable);
  * @param hashtable pointer to hashtable
  * @param value Pointer to added value, cant be NULL
  * @param key Pointer to string
- * @return true if OK, false if key already exists
+ * @return HT_OK if ok, HT_EXISTS  if key already exists, HT_NOMEM if allocation failure
  */
-bool hashtable_add(Htable *hashtable, void *value, const char *key);
+HtStatus hashtable_add(Htable *hashtable, void *value, const char *key);
 
 /**
  * @brief search for value of given key, value cant be NULL
