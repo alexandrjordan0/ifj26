@@ -7,6 +7,7 @@
 #include "error.h"
 #include "hashtable.h"
 #include <stdlib.h>
+#include <string.h>
 
 #define FUNCS_CAPACITY 10
 #define SCOPE_CAPACITY 10
@@ -28,9 +29,12 @@ static void func_free(void *ptr) {
     FuncInfo *p = (FuncInfo *)ptr;
     char **names = (char **)p->param_names;
     free((char *)p->name);
-    for (size_t i = 0; i < p->param_count; i++) {
-        free(names[i]);
+    if (names != NULL) {
+        for (size_t i = 0; i < p->param_count; i++) {
+            free(names[i]);
+        }
     }
+
     free(names);
     free(p->param_types);
     free(p);
@@ -128,4 +132,57 @@ VarInfo *symtable_find_var_current_scope(SymTable *st, const char *name) {
     }
     VarInfo *var = hashtable_search(st->top->variables, name);
     return var;
+}
+
+ErrorCode symtable_add_func(SymTable *st, const char *name, size_t param_count,
+                            const Type *param_types, const char *const *param_names,
+                            Type return_type, bool is_defined) {
+    FuncInfo *func = calloc(1, sizeof(FuncInfo));
+    if (func == NULL) {
+        return ERR_INTERNAL;
+    }
+    func->is_defined = is_defined;
+    func->name = strdup(name);
+    func->param_count = param_count;
+    func->return_type = return_type;
+    if (func->name == NULL) {
+        func_free(func);
+        return ERR_INTERNAL;
+    }
+
+    if (param_count > 0) {
+        func->param_types = malloc(sizeof(Type) * param_count);
+        if (func->param_types == NULL) {
+            func_free(func);
+            return ERR_INTERNAL;
+        }
+        memcpy(func->param_types, param_types, sizeof(Type) * param_count);
+        char **names = calloc(param_count, sizeof(*names));
+        if (names == NULL) {
+            func_free(func);
+            return ERR_INTERNAL;
+        }
+        func->param_names = (const char *const *)names;
+        for (size_t i = 0; i < param_count; i++) {
+            names[i] = strdup(param_names[i]);
+            if (names[i] == NULL) {
+                func_free(func);
+                return ERR_INTERNAL;
+            }
+        }
+    }
+
+    HtStatus add = hashtable_add(st->functions, func, name);
+    if (add == HT_NOMEM) {
+        func_free(func);
+        return ERR_INTERNAL;
+    } else if (add == HT_EXISTS) {
+        func_free(func);
+        return ERR_SEM_REDEF;
+    }
+    return ERR_OK;
+}
+
+FuncInfo *symtable_find_func(SymTable *st, const char *name) {
+    return hashtable_search(st->functions, name);
 }
