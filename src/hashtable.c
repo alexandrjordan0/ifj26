@@ -18,8 +18,8 @@ struct Htable {
     size_t count;
 };
 
-// modified hash function from my IJC project
-size_t hash(const char *key) {
+// modified hash function from my IJC project (called sdbm)
+static size_t hash(const char *key) {
     size_t h = 0;
     const unsigned char *p;
     for (p = (const unsigned char *)key; *p != '\0'; p++)
@@ -31,17 +31,22 @@ Htable *hashtable_init(size_t capacity) {
     if (capacity == 0) {
         return NULL;
     }
+
     Htable *hashtable = malloc(sizeof(Htable));
     if (hashtable == NULL) {
         return NULL;
     }
+
     hashtable->capacity = capacity;
     hashtable->count = 0;
+
+    // hashtable->items is set to zero, which means "empty space"
     hashtable->items = calloc(capacity, sizeof(HtableItem *));
     if (hashtable->items == NULL) {
         free(hashtable);
         return NULL;
     }
+
     return hashtable;
 }
 
@@ -49,12 +54,17 @@ void hashtable_delete(Htable *hashtable, void (*free_value)(void *)) {
     if (hashtable == NULL) {
         return;
     }
+
     for (size_t i = 0; i < hashtable->capacity; i++) {
         if (hashtable->items[i] != NULL) {
             free(hashtable->items[i]->key);
+
+            // free_value is used to free value, of item because hashtable does not know structure
+            // of that value
             if (free_value != NULL) {
                 free_value(hashtable->items[i]->value);
             }
+
             free(hashtable->items[i]);
         }
     }
@@ -62,11 +72,13 @@ void hashtable_delete(Htable *hashtable, void (*free_value)(void *)) {
     free(hashtable);
 }
 
-// linear placement of items, possible upgrade to quadratic or double hash
 static void place_item(HtableItem **items, size_t capacity, HtableItem *item) {
     size_t start = hash(item->key) % capacity;
+
+    // linear placement of items, in case of collision item is placed on next index
     for (size_t i = 0; i < capacity; i++) {
         size_t pos = (i + start) % capacity;
+
         if (items[pos] == NULL) {
             items[pos] = item;
             return;
@@ -74,47 +86,64 @@ static void place_item(HtableItem **items, size_t capacity, HtableItem *item) {
     }
 }
 
-bool hashtable_check_size(Htable *hashtable) {
+// function checks, if hashtable is filled more than 70%, if so, capacity of hashtable is doubled an
+// all items are re-hashed. Function returns true in case of success, false otherwise
+static bool hashtable_check_size(Htable *hashtable) {
     if (hashtable->capacity * 7 >= hashtable->count * 10) {
         return true;
     }
+
     HtableItem **new_items = calloc(hashtable->capacity * 2, sizeof(HtableItem *));
     if (new_items == NULL) {
         return false;
     }
+
     for (size_t i = 0; i < hashtable->capacity; i++) {
         if (hashtable->items[i] != NULL) {
             place_item(new_items, hashtable->capacity * 2, hashtable->items[i]);
         }
     }
+
     free(hashtable->items);
     hashtable->capacity = hashtable->capacity * 2;
     hashtable->items = new_items;
+
     return true;
 }
 
 void *hashtable_search(Htable *hashtable, const char *key) {
     size_t pos = hash(key) % hashtable->capacity;
+
+    // linear searching for key
     for (size_t i = 0; i < hashtable->capacity; i++) {
+
+        // key not found
         if (hashtable->items[(pos + i) % hashtable->capacity] == NULL) {
             return NULL;
         }
+
+        // key found
         if (strcmp(key, hashtable->items[(pos + i) % hashtable->capacity]->key) == 0) {
             return hashtable->items[(pos + i) % hashtable->capacity]->value;
         }
     }
+
     return NULL;
 }
 
 HtStatus hashtable_add(Htable *hashtable, void *value, const char *key) {
     void *con = hashtable_search(hashtable, key);
+
     if (con != NULL) {
         return HT_EXISTS;
     }
+
+    // check if hashtable is not filled above limit
     bool ok = hashtable_check_size(hashtable);
     if (ok == false) {
         return HT_NOMEM;
     }
+
     HtableItem *new_item = malloc(sizeof(HtableItem));
     if (new_item == NULL) {
         return HT_NOMEM;
@@ -125,9 +154,11 @@ HtStatus hashtable_add(Htable *hashtable, void *value, const char *key) {
         free(new_item);
         return HT_NOMEM;
     }
+
     hashtable->count++;
     strcpy(new_item->key, key);
     new_item->value = value;
     place_item(hashtable->items, hashtable->capacity, new_item);
+
     return HT_OK;
 }
