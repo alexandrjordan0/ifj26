@@ -26,6 +26,7 @@ typedef enum {
     PREC_SYM_LTE,    // <=
     PREC_SYM_GTE,    // >=
     PREC_SYM_NOT,    // ! (BOOLTHEN)
+    PREC_SYM_UMINUS, // unary -
     PREC_SYM_AND,    // && (BOOLTHEN)
     PREC_SYM_OR,     // || (BOOLTHEN)
     PREC_SYM_LPAR,   // (
