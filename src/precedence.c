@@ -161,15 +161,12 @@ static bool stack_insert_stop_after_top_terminal(PrecStack *stack) {
     return true;
 }
 
-static ErrorCode token_to_prec_sym(Token *token, SymTable *sym_table, PrecSymbol *out_sym,
-                                   Type *out_type, int *out_depth) {
-    if (token == NULL || sym_table == NULL || out_sym == NULL || out_type == NULL ||
-        out_depth == NULL) {
+static ErrorCode token_to_prec_sym(Token *token, PrecSymbol *out_sym, Type *out_type) {
+    if (token == NULL || out_sym == NULL || out_type == NULL) {
         return ERR_INTERNAL;
     }
 
     *out_type = TYPE_UNKNOWN;
-    *out_depth = 0;
 
     switch (token->type) {
 
@@ -247,24 +244,10 @@ static ErrorCode token_to_prec_sym(Token *token, SymTable *sym_table, PrecSymbol
         *out_type = TYPE_BOOL;
         break;
 
-    // identifier
-    case TOKEN_IDENTIFIER: {
-        // TODO VarInfo *var = symtable_find_var(sym_table, token->value.str_value.data);
-        VarInfo *var = NULL;
-
-        if (var == NULL) {
-            return ERR_SEM_UNDEF;
-        }
-
-        if (var->type == TYPE_UNKNOWN) {
-            return ERR_SEM_TYPES;
-        }
-
+    // identifier, resolved in shift
+    case TOKEN_IDENTIFIER:
         *out_sym = PREC_SYM_ID;
-        *out_type = var->type;
-        *out_depth = var->scope_depth;
         break;
-    }
 
     // any other token terminates expression
     default:
@@ -503,6 +486,156 @@ static ErrorCode reduce(PrecStack *stack) {
     return ERR_OK;
 }
 
+// FUNEXP
+static ErrorCode parse_call(const char *name, Token *current_token, SymTable *symtable,
+                            Type *ret_type) {
+    if (name == NULL || current_token == NULL || symtable == NULL || ret_type == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    *ret_type = TYPE_UNKNOWN;
+
+    // TODO FuncInfo *func = symtable_find_func(symtable, name);
+    // if (func == NULL) {
+    //     return ERR_SEM_UNDEF;
+    // }
+    FuncInfo *func = NULL;
+
+    ErrorCode status = ERR_OK;
+    size_t arg_count = 0;
+
+    // call without arguments
+    if (current_token->type == TOKEN_LIT_UNIT) {
+        token_free(current_token);
+        status = get_next_token(current_token);
+        if (status != ERR_OK) {
+            return status;
+        }
+    } else {
+        if (current_token->type != TOKEN_LEFTPAR) {
+            return ERR_SYNTAX;
+        }
+
+        token_free(current_token);
+        status = get_next_token(current_token);
+        if (status != ERR_OK) {
+            return status;
+        }
+
+        // parse arguments
+        while (true) {
+            Type arg_type = TYPE_UNKNOWN;
+            status = parse_expression(current_token, symtable, &arg_type);
+            if (status != ERR_OK) {
+                return status;
+            }
+
+            // TODO Any type for print and toStr
+            if (func != NULL) {
+                if (arg_count >= func->param_count || func->param_types[arg_count] != arg_type) {
+                    return ERR_SEM_ARGS;
+                }
+            }
+            arg_count++;
+
+            if (current_token->type == TOKEN_COMMA) {
+                token_free(current_token);
+                status = get_next_token(current_token);
+                if (status != ERR_OK) {
+                    return status;
+                }
+                continue;
+            }
+
+            if (current_token->type == TOKEN_RIGHTPAR) {
+                token_free(current_token);
+                status = get_next_token(current_token);
+                if (status != ERR_OK) {
+                    return status;
+                }
+                break;
+            }
+
+            return ERR_SYNTAX;
+        }
+    }
+
+    if (func != NULL) {
+        if (arg_count != func->param_count) {
+            return ERR_SEM_ARGS;
+        }
+
+        // TODO function without return type
+        if (func->return_type == TYPE_UNKNOWN) {
+            return ERR_SEM_TYPES;
+        }
+
+        *ret_type = func->return_type;
+    }
+
+    // TODO gen_call(name);
+
+    return ERR_OK;
+}
+
+static ErrorCode parse_variable(const char *name, SymTable *symtable, Type *out_type) {
+    if (name == NULL || symtable == NULL || out_type == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    *out_type = TYPE_UNKNOWN;
+
+    // TODO VarInfo *var = symtable_find_var(symtable, name);
+    VarInfo *var = NULL;
+
+    if (var == NULL) {
+        return ERR_SEM_UNDEF;
+    }
+
+    if (var->type == TYPE_UNKNOWN) {
+        return ERR_SEM_TYPES;
+    }
+
+    *out_type = var->type;
+
+    // TODO gen_push_var(name, FRAME_LF, var->scope_depth);
+
+    return ERR_OK;
+}
+
+static ErrorCode parse_identifier(Token *current_token, SymTable *symtable, Type *out_type) {
+    if (current_token == NULL || symtable == NULL || out_type == NULL ||
+        current_token->value.str_value.data == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    *out_type = TYPE_UNKNOWN;
+
+    string_t name;
+    if (!str_init(&name)) {
+        return ERR_INTERNAL;
+    }
+
+    if (!str_append_str(&name, current_token->value.str_value.data)) {
+        str_free(&name);
+        return ERR_INTERNAL;
+    }
+
+    token_free(current_token);
+    ErrorCode status = get_next_token(current_token);
+
+    if (status == ERR_OK) {
+        if (current_token->type == TOKEN_LEFTPAR || current_token->type == TOKEN_LIT_UNIT) {
+            status = parse_call(name.data, current_token, symtable, out_type);
+        } else {
+            status = parse_variable(name.data, symtable, out_type);
+        }
+    }
+
+    str_free(&name);
+    return status;
+}
+
 ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *result_type) {
     if (current_token == NULL || symtable == NULL || result_type == NULL) {
         return ERR_INTERNAL;
@@ -529,8 +662,7 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
 
         PrecSymbol input_sym = PREC_SYM_DOLLAR;
         Type input_type = TYPE_UNKNOWN;
-        int input_depth = 0;
-        status = token_to_prec_sym(current_token, symtable, &input_sym, &input_type, &input_depth);
+        status = token_to_prec_sym(current_token, &input_sym, &input_type);
         if (status != ERR_OK) {
             stack_free(stack);
             return status;
@@ -542,7 +674,9 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
             input_sym = PREC_SYM_UMINUS;
         }
 
-        if (top_term->symbol == PREC_SYM_DOLLAR && input_sym == PREC_SYM_DOLLAR) {
+        // ) ends function call argument
+        if (top_term->symbol == PREC_SYM_DOLLAR &&
+            (input_sym == PREC_SYM_DOLLAR || input_sym == PREC_SYM_RPAR)) {
             break;
         }
 
@@ -556,13 +690,26 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
                 return ERR_INTERNAL;
             }
 
-            // TODO if literal or identificator, generate PUSH
+            // variable or function call
+            if (input_sym == PREC_SYM_ID && current_token->type == TOKEN_IDENTIFIER) {
+                status = parse_identifier(current_token, symtable, &input_type);
+                if (status != ERR_OK) {
+                    stack_free(stack);
+                    return status;
+                }
+
+                if (!stack_push(stack, PREC_SYM_ID, input_type)) {
+                    stack_free(stack);
+                    return ERR_INTERNAL;
+                }
+                prev_input = PREC_SYM_ID;
+
+                break;
+            }
+
+            // TODO if literal, generate PUSH
             // if (input_sym == PREC_SYM_ID) {
-            //     if (current_token->type == TOKEN_IDENTIFIER) {
-            //         gen_push_var(current_token->value.str_value.data, FRAME_LF, input_depth);
-            //     } else {
-            //         gen_push_literal(current_token);
-            //     }
+            //     gen_push_literal(current_token);
             // }
 
             // add input symbol to top
