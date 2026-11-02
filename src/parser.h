@@ -40,6 +40,8 @@ ErrorCode parse_func();
 
 ErrorCode parse_main_anot();
 
+ErrorCode parse_main_anot_eol();
+
 ErrorCode parse_param_set();
 
 ErrorCode parse_param_next();

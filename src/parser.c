@@ -13,8 +13,16 @@ Token token;
 
 #define GET_TOKEN()                                                                                \
     do {                                                                                           \
+        token_free(&token);                                                                        \
         if (get_next_token(&token) != ERR_OK) {                                                    \
             return ERR_LEXICAL;                                                                    \
+        }                                                                                          \
+    } while (0)
+
+#define CHECK_TOKEN(something)                                                                     \
+    do {                                                                                           \
+        if (token.type != something) {                                                             \
+            return ERR_SYNTAX;                                                                     \
         }                                                                                          \
     } while (0)
 
@@ -27,36 +35,165 @@ ErrorCode parse_program() {
     }
 
     GET_TOKEN();
-    if (token.type != TOKEN_EOF) {
-        return ERR_SYNTAX;
-    }
+    CHECK_TOKEN(TOKEN_EOF);
+
     return ERR_OK;
 }
 
 ErrorCode parse_prolog() {
     GET_TOKEN();
+    CHECK_TOKEN(TOKEN_KEYWORD_IMPORT);
 
-    if (token.type != TOKEN_KEYWORD_IMPORT) {
-        return ERR_SYNTAX;
-    }
-    if (token.type != TOKEN_IDENTIFIER) {
-        return ERR_SYNTAX;
-    }
-    if (token.type != TOKEN_DOT) {
-        return ERR_SYNTAX;
-    }
-    if (token.type != TOKEN_MUL) {
-        return ERR_SYNTAX;
-    }
-    if (token.type != TOKEN_EOL) {
-        return ERR_SYNTAX;
-    }
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_IDENTIFIER);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_DOT);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_MUL);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_EOL);
     return ERR_OK;
 }
 
 ErrorCode parse_func_set() {
-    /**
-     * TODO
-     */
+    if (parse_func() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    if (parse_func_set() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
     return ERR_OK;
+}
+
+ErrorCode parse_func() {
+    // CURRENT TOKEN = TOKEN_KEYWORD_DEF
+    if (parse_main_anot() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_IDENTIFIER);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_LEFTPAR);
+
+    if (parse_param_set() != ERR_OK) {
+        return ERR_SYNTAX;
+    } // CURR. TOKEN = TOKEN_RIGHTPAR
+
+    /**
+     *  TODO
+     */
+
+    return ERR_OK;
+}
+
+ErrorCode parse_main_anot() {
+    GET_TOKEN();
+    if (token.type == TOKEN_KEYWORD_DEF) {
+        return ERR_OK;
+    }
+    CHECK_TOKEN(TOKEN_AT);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_IDENTIFIER); // Needs to be TOKEN_KEYWORD_MAIN, not just any IDENTIFIER: TODO
+
+    if (parse_main_anot_eol() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    return ERR_OK; // Current token = TOKEN_KEYWORD_DEF
+}
+
+ErrorCode parse_main_anot_eol() {
+    GET_TOKEN();
+    if (token.type == TOKEN_EOL) {
+        GET_TOKEN();
+        CHECK_TOKEN(TOKEN_KEYWORD_DEF);
+        return ERR_OK;
+    }
+
+    if (token.type == TOKEN_KEYWORD_DEF) {
+        return ERR_OK;
+    }
+
+    return ERR_SYNTAX;
+}
+
+ErrorCode parse_param_set() {
+    GET_TOKEN();
+    if (token.type == TOKEN_RIGHTPAR) {
+        return ERR_OK;
+    }
+
+    if (parse_param() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    if (parse_param_next() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    return ERR_OK; // CURRENT TOKEN = TOKEN_RIGHTPAR
+}
+
+ErrorCode parse_param() {
+    CHECK_TOKEN(TOKEN_IDENTIFIER);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_COLON);
+
+    if (parse_type() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    return ERR_OK;
+}
+
+ErrorCode parse_param_next() {
+    GET_TOKEN();
+    if (token.type == TOKEN_RIGHTPAR) {
+        return ERR_OK;
+    }
+    CHECK_TOKEN(TOKEN_COMMA);
+
+    GET_TOKEN();
+    if (parse_param() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    if (parse_param_next() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    return ERR_OK;
+}
+
+ErrorCode parse_type() {
+    GET_TOKEN();
+    switch (token.type) {
+    case TOKEN_KEYWORD_INT:
+        return ERR_OK;
+        break;
+    case TOKEN_KEYWORD_STRING:
+        return ERR_OK;
+        break;
+    case TOKEN_KEYWORD_DOUBLE:
+        return ERR_OK;
+        break;
+    case TOKEN_KEYWORD_UNIT:
+        return ERR_OK;
+        break;
+    case TOKEN_KEYWORD_BOOLEAN:
+        return ERR_OK;
+        break;
+    default:
+        return ERR_SYNTAX;
+        break;
+    }
 }
