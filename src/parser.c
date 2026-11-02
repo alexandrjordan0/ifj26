@@ -10,6 +10,7 @@
 #include "scanner.h"
 
 Token token;
+Token prev_token;
 
 #define GET_TOKEN()                                                                                \
     do {                                                                                           \
@@ -71,10 +72,9 @@ ErrorCode parse_func_set() {
 }
 
 ErrorCode parse_func() {
-    // CURRENT TOKEN = TOKEN_KEYWORD_DEF
     if (parse_main_anot() != ERR_OK) {
         return ERR_SYNTAX;
-    }
+    } // CURRENT TOKEN = TOKEN_KEYWORD_DEF
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
@@ -86,9 +86,9 @@ ErrorCode parse_func() {
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_RIGHTPAR
 
-    /**
-     *  TODO
-     */
+    if (parse_return_type() != ERR_OK) {
+        return ERR_SYNTAX;
+    } // CURR. TOKEN = TOKEN_ASSIGN
 
     return ERR_OK;
 }
@@ -148,11 +148,12 @@ ErrorCode parse_param() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_COLON);
 
+    GET_TOKEN();
     if (parse_type() != ERR_OK) {
         return ERR_SYNTAX;
     }
 
-    return ERR_OK;
+    return ERR_OK; // CURR. TOKEN = TOKEN_~TYPE
 }
 
 ErrorCode parse_param_next() {
@@ -167,6 +168,7 @@ ErrorCode parse_param_next() {
         return ERR_SYNTAX;
     }
 
+    GET_TOKEN();
     if (parse_param_next() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -175,7 +177,6 @@ ErrorCode parse_param_next() {
 }
 
 ErrorCode parse_type() {
-    GET_TOKEN();
     switch (token.type) {
     case TOKEN_KEYWORD_INT:
         return ERR_OK;
@@ -196,4 +197,58 @@ ErrorCode parse_type() {
         return ERR_SYNTAX;
         break;
     }
+}
+
+ErrorCode parse_return_type() {
+    GET_TOKEN();
+    if (token.type == TOKEN_ASSIGN) {
+        return ERR_OK;
+    }
+    CHECK_TOKEN(TOKEN_COLON);
+
+    GET_TOKEN();
+    if (parse_type() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_ASSIGN);
+    return ERR_OK; // CURR. TOKEN = TOKEN_ASSIGN
+}
+
+ErrorCode parse_body() {
+    GET_TOKEN();
+    if (token.type == TOKEN_EOL) {
+        if (parse_block() != ERR_OK) {
+            return ERR_SYNTAX;
+        }
+    } else {
+        prev_token = token;
+        if (/* parse_expression() != ERR_OK */ false /* TODO */) {
+            return ERR_SYNTAX;
+        }
+    }
+
+    return ERR_OK;
+}
+
+ErrorCode parse_block() {
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_INDENT);
+
+    /* TODO */
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_DEDENT);
+    return ERR_OK;
+}
+
+ErrorCode parse_command_set() {
+    if (token.type == TOKEN_DEDENT) {
+        return ERR_OK;
+    }
+
+    /* TODO */
+
+    return ERR_OK;
 }
