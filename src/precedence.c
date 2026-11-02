@@ -6,7 +6,7 @@
  */
 
 #include "precedence.h"
-// #include "codegenerator.h"
+// TODO #include "codegenerator.h"
 #include <stdlib.h>
 
 typedef enum {
@@ -495,11 +495,10 @@ static ErrorCode parse_call(const char *name, Token *current_token, SymTable *sy
 
     *ret_type = TYPE_UNKNOWN;
 
-    // TODO FuncInfo *func = symtable_find_func(symtable, name);
-    // if (func == NULL) {
-    //     return ERR_SEM_UNDEF;
-    // }
-    FuncInfo *func = NULL;
+    FuncInfo *func = symtable_find_func(symtable, name);
+    if (func == NULL) {
+        return ERR_SEM_UNDEF;
+    }
 
     ErrorCode status = ERR_OK;
     size_t arg_count = 0;
@@ -530,9 +529,15 @@ static ErrorCode parse_call(const char *name, Token *current_token, SymTable *sy
                 return status;
             }
 
-            // TODO Any type for print and toStr
             if (func != NULL) {
-                if (arg_count >= func->param_count || func->param_types[arg_count] != arg_type) {
+                if (arg_count >= func->param_count) {
+                    return ERR_SEM_ARGS;
+                }
+
+                Type param_type = func->param_types[arg_count];
+                if (param_type == TYPE_DOUBLE && arg_type == TYPE_INT) {
+                    // TODO codegen INT2FLOATS
+                } else if (param_type != TYPE_ANY && param_type != arg_type) {
                     return ERR_SEM_ARGS;
                 }
             }
@@ -585,8 +590,7 @@ static ErrorCode parse_variable(const char *name, SymTable *symtable, Type *out_
 
     *out_type = TYPE_UNKNOWN;
 
-    // TODO VarInfo *var = symtable_find_var(symtable, name);
-    VarInfo *var = NULL;
+    VarInfo *var = symtable_find_var(symtable, name);
 
     if (var == NULL) {
         return ERR_SEM_UNDEF;
