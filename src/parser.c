@@ -10,7 +10,6 @@
 #include "scanner.h"
 
 Token token;
-Token prev_token;
 
 #define GET_TOKEN()                                                                                \
     do {                                                                                           \
@@ -28,6 +27,9 @@ Token prev_token;
     } while (0)
 
 ErrorCode parse_program() {
+
+    /* Symtable init */
+
     if (parse_prolog() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -98,10 +100,7 @@ ErrorCode parse_main_anot() {
     if (token.type == TOKEN_KEYWORD_DEF) {
         return ERR_OK;
     }
-    CHECK_TOKEN(TOKEN_AT);
-
-    GET_TOKEN();
-    CHECK_TOKEN(TOKEN_IDENTIFIER); // Needs to be TOKEN_KEYWORD_MAIN, not just any IDENTIFIER: TODO
+    /*CHECK_TOKEN(TOKEN_KEYWORD_MAIN); -- TODO*/
 
     if (parse_main_anot_eol() != ERR_OK) {
         return ERR_SYNTAX;
@@ -223,8 +222,8 @@ ErrorCode parse_body() {
             return ERR_SYNTAX;
         }
     } else {
-        prev_token = token;
-        if (/* parse_expression() != ERR_OK */ false /* TODO */) {
+        /*&token - ..., &symtable - ..., &arg_type - type of function where it's called */
+        if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
             return ERR_SYNTAX;
         }
     }

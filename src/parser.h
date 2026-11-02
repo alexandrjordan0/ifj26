@@ -92,7 +92,7 @@ ErrorCode parse_while_body();
 
 ErrorCode parse_while_block();
 
-ErrorCode parse_volsemcol();
+ErrorCode parse_separator();
 
 ErrorCode parse_return_command();
 
