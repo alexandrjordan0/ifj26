@@ -8,8 +8,10 @@
 #include "parser.h"
 #include "error.h"
 #include "scanner.h"
+#include "symtable.h"
 
 Token token;
+SymTable *symtable;
 
 #define GET_TOKEN()                                                                                \
     do {                                                                                           \
@@ -28,7 +30,7 @@ Token token;
 
 ErrorCode parse_program() {
 
-    /* Symtable init */
+    symtable = symtable_init();
 
     if (parse_prolog() != ERR_OK) {
         return ERR_SYNTAX;
@@ -249,5 +251,26 @@ ErrorCode parse_command_set() {
 
     /* TODO */
 
+    return ERR_OK;
+}
+
+ErrorCode parse_command() { return ERR_OK; }
+
+ErrorCode parse_command_simple() {
+    GET_TOKEN();
+    /* TODO */
+    switch (token.type) {
+    case TOKEN_KEYWORD_VAR:
+        break;
+    case TOKEN_KEYWORD_VAL:
+        break;
+    case TOKEN_KEYWORD_RETURN:
+        break;
+    case TOKEN_IDENTIFIER:
+        break;
+    default:
+        return ERR_SYNTAX;
+        break;
+    }
     return ERR_OK;
 }
