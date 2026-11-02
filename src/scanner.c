@@ -488,7 +488,19 @@ ErrorCode get_next_token(Token *token) {
             } else if (c == ';') {
                 return emit(token, &buf, TOKEN_SEMICOLON);
             } else if (c == '@') {
-                return emit(token, &buf, TOKEN_AT);
+                const char *expected = "main";
+
+                for (int i = 0; expected[i] != '\0'; i++) {
+                    if (next_char() != expected[i]) {
+                        return lex_error(&buf);
+                    }
+                }
+
+                if (is_ident_char(peek_char())) {
+                    return lex_error(&buf);
+                }
+
+                return emit(token, &buf, TOKEN_MAIN);
             } else if (c == '.') {
                 if (is_digit(peek_char())) {
 
