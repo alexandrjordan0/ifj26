@@ -544,10 +544,22 @@ static ErrorCode parse_call(const char *name, Token *current_token, SymTable *sy
             arg_count++;
 
             if (current_token->type == TOKEN_COMMA) {
+                int comma_line = current_token->line;
+
                 token_free(current_token);
                 status = get_next_token(current_token);
                 if (status != ERR_OK) {
                     return status;
+                }
+
+                // trailing comma is allowed only if ) is on a later line
+                if (current_token->type == TOKEN_RIGHTPAR && current_token->line > comma_line) {
+                    token_free(current_token);
+                    status = get_next_token(current_token);
+                    if (status != ERR_OK) {
+                        return status;
+                    }
+                    break;
                 }
                 continue;
             }
