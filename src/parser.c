@@ -9,6 +9,7 @@
 #include "error.h"
 #include "scanner.h"
 #include "symtable.h"
+#include <stdbool.h>
 
 Token token;
 SymTable *symtable;
@@ -94,9 +95,14 @@ ErrorCode parse_func() {
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_ASSIGN
 
+    if (parse_body() != ERR_OK) {
+        return ERR_SYNTAX;
+    } // CURR. TOKEN = TOKEN_DEDENT
+
     return ERR_OK;
 }
 
+/* TODO - Implement Token keyword MAIN */
 ErrorCode parse_main_anot() {
     GET_TOKEN();
     if (token.type == TOKEN_KEYWORD_DEF) {
@@ -177,6 +183,7 @@ ErrorCode parse_param_next() {
     return ERR_OK;
 }
 
+/* TODO - get return type for parse_expression() */
 ErrorCode parse_type() {
     switch (token.type) {
     case TOKEN_KEYWORD_INT:
@@ -217,6 +224,7 @@ ErrorCode parse_return_type() {
     return ERR_OK; // CURR. TOKEN = TOKEN_ASSIGN
 }
 
+/* TODO - finish parse_expression() */
 ErrorCode parse_body() {
     GET_TOKEN();
     if (token.type == TOKEN_EOL) {
@@ -237,40 +245,182 @@ ErrorCode parse_block() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_INDENT);
 
-    /* TODO */
+    if (parse_command() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
 
-    GET_TOKEN();
-    CHECK_TOKEN(TOKEN_DEDENT);
-    return ERR_OK;
+    if (parse_command_set() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    return ERR_OK; // CURR. TOKEN = TOKEN_DEDENT
 }
 
 ErrorCode parse_command_set() {
+    GET_TOKEN();
     if (token.type == TOKEN_DEDENT) {
         return ERR_OK;
     }
 
-    /* TODO */
+    if (parse_command() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    if (parse_command_set() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
 
     return ERR_OK;
 }
 
-ErrorCode parse_command() { return ERR_OK; }
+ErrorCode parse_command() {
+    if (parse_command_complex() == ERR_OK) {
+        return ERR_OK;
+    }
 
+    if (parse_command_simple() == ERR_OK && parse_separator() == ERR_OK) {
+        return ERR_OK;
+    }
+
+    return ERR_SYNTAX;
+}
+
+/* TODO - ... */
 ErrorCode parse_command_simple() {
-    GET_TOKEN();
-    /* TODO */
     switch (token.type) {
     case TOKEN_KEYWORD_VAR:
+        if (parse_variable() == ERR_OK) {
+            break;
+        }
+        return ERR_SYNTAX;
         break;
     case TOKEN_KEYWORD_VAL:
+        if (parse_value() == ERR_OK) {
+            break;
+        }
+        return ERR_SYNTAX;
         break;
     case TOKEN_KEYWORD_RETURN:
+        GET_TOKEN();
+        if (/* parse_expression(&token, &symtable, &arg_type) == ERR_OK */ false /* TODO */) {
+            break;
+        }
+        return ERR_SYNTAX;
         break;
     case TOKEN_IDENTIFIER:
+        GET_TOKEN();
+        CHECK_TOKEN(TOKEN_ASSIGN);
+
+        GET_TOKEN();
+        if (/* parse_expression(&token, &symtable, &arg_type) == ERR_OK */ false /* TODO */) {
+            break;
+        }
+        return ERR_SYNTAX;
         break;
     default:
         return ERR_SYNTAX;
         break;
     }
+    return ERR_OK;
+}
+
+ErrorCode parse_variable() {
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_IDENTIFIER);
+
+    if (parse_variable_type() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+        return ERR_SYNTAX;
+    }
+    return ERR_OK;
+}
+
+/* Do I really need this OR should I just use: parse_ret_type() */
+ErrorCode parse_variable_type() {
+    GET_TOKEN();
+    if (token.type == TOKEN_ASSIGN) {
+        return ERR_OK;
+    }
+    CHECK_TOKEN(TOKEN_COLON);
+
+    GET_TOKEN();
+    if (parse_type() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_ASSIGN);
+    return ERR_OK; // CURR. TOKEN = TOKEN_ASSIGN
+}
+
+ErrorCode parse_value() {
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_IDENTIFIER);
+
+    if (parse_variable_type() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+        return ERR_SYNTAX;
+    }
+    return ERR_OK;
+}
+
+ErrorCode parse_separator() {
+    GET_TOKEN();
+    if (token.type == TOKEN_SEMICOLON) {
+        return ERR_OK;
+    } else if (token.type == TOKEN_EOL) {
+        return ERR_OK;
+    }
+
+    return ERR_SYNTAX;
+}
+
+/* TODO - add IF and WHILE statements */
+ErrorCode parse_command_complex() {
+    if (token.type == TOKEN_KEYWORD_IF) {
+    }
+
+    if (token.type == TOKEN_KEYWORD_WHILE) {
+    }
+
+    return ERR_SYNTAX;
+}
+
+/* TODO - parse_expression() and ELSE block*/
+ErrorCode parse_if_statement() {
+    GET_TOKEN();
+
+    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_KEYWORD_THEN);
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_EOL);
+
+    if (parse_block() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+
+    return ERR_OK;
+}
+
+/* TODO - Work out how should this behave */
+ErrorCode parse_vol_else_block() {
+    if (token.type == TOKEN_KEYWORD_ELSE) {
+    }
+
     return ERR_OK;
 }

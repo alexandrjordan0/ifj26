@@ -13,7 +13,6 @@
 #include "str.h"
 #include <stdio.h>
 
-
 ErrorCode parse_program();
 
 ErrorCode parse_prolog();
@@ -56,15 +55,7 @@ ErrorCode parse_command_simple();
 
 ErrorCode parse_command_complex();
 
-ErrorCode parse_term();
-
-ErrorCode parse_arg_set();
-
-ErrorCode parse_arg_next();
-
 ErrorCode parse_if_statement();
-
-ErrorCode parse_if_body();
 
 ErrorCode parse_vol_else_block();
 
