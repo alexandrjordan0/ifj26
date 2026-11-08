@@ -20,10 +20,16 @@ SymTable *symtable;
         if (get_next_token(&token) != ERR_OK) {                                                    \
             return ERR_LEXICAL;                                                                    \
         }                                                                                          \
+        if (&token == NULL) {                                                                      \
+            return ERR_INTERNAL;                                                                   \
+        }                                                                                          \
     } while (0)
 
 #define CHECK_TOKEN(something)                                                                     \
     do {                                                                                           \
+        if (&token == NULL) {                                                                      \
+            return ERR_INTERNAL;                                                                   \
+        }                                                                                          \
         if (token.type != something) {                                                             \
             return ERR_SYNTAX;                                                                     \
         }                                                                                          \
@@ -136,11 +142,11 @@ ErrorCode parse_param_set() {
     GET_TOKEN();
     if (token.type == TOKEN_RIGHTPAR) {
         return ERR_OK;
-    }
+    } // Curr. TOKEN == TOKEN_RIGHTPAR
 
     if (parse_param() != ERR_OK) {
         return ERR_SYNTAX;
-    }
+    } // Curr. TOKEN == TOKEN~_TYPE
 
     if (parse_param_next() != ERR_OK) {
         return ERR_SYNTAX;
@@ -150,6 +156,9 @@ ErrorCode parse_param_set() {
 }
 
 ErrorCode parse_param() {
+    if (token.type == TOKEN_EOL) {
+        GET_TOKEN();
+    }
     CHECK_TOKEN(TOKEN_IDENTIFIER);
 
     GET_TOKEN();
@@ -163,6 +172,13 @@ ErrorCode parse_param() {
     return ERR_OK; // CURR. TOKEN = TOKEN_~TYPE
 }
 
+ErrorCode parse_vol_eol() {
+    if (token.type == TOKEN_IDENTIFIER || token.type == TOKEN_EOL) {
+        return ERR_OK;
+    }
+    return ERR_SYNTAX;
+}
+
 ErrorCode parse_param_next() {
     GET_TOKEN();
     if (token.type == TOKEN_RIGHTPAR) {
@@ -171,14 +187,19 @@ ErrorCode parse_param_next() {
     CHECK_TOKEN(TOKEN_COMMA);
 
     GET_TOKEN();
+    if (parse_vol_eol() != ERR_OK) {
+        return ERR_SYNTAX;
+    } // Curr. TOKEN == EOL || ID
+
+    GET_TOKEN();
     if (parse_param() != ERR_OK) {
         return ERR_SYNTAX;
-    }
+    } // Curr. TOKEN == TOKEN_~TYPE
 
     GET_TOKEN();
     if (parse_param_next() != ERR_OK) {
         return ERR_SYNTAX;
-    }
+    } // Curr. TOKEN == TOKEN_~TYPE
 
     return ERR_OK;
 }
@@ -187,24 +208,16 @@ ErrorCode parse_param_next() {
 ErrorCode parse_type() {
     switch (token.type) {
     case TOKEN_KEYWORD_INT:
-        return ERR_OK;
-        break;
     case TOKEN_KEYWORD_STRING:
-        return ERR_OK;
-        break;
     case TOKEN_KEYWORD_DOUBLE:
-        return ERR_OK;
-        break;
     case TOKEN_KEYWORD_UNIT:
-        return ERR_OK;
-        break;
     case TOKEN_KEYWORD_BOOLEAN:
-        return ERR_OK;
         break;
     default:
         return ERR_SYNTAX;
-        break;
     }
+
+    return ERR_OK;
 }
 
 ErrorCode parse_return_type() {
