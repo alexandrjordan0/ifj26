@@ -301,25 +301,27 @@ ErrorCode parse_command() {
 /* TODO - ... */
 ErrorCode parse_command_simple() {
     switch (token.type) {
+    case TOKEN_EOL:
+        break;
     case TOKEN_KEYWORD_VAR:
         if (parse_variable() == ERR_OK) {
             break;
         }
         return ERR_SYNTAX;
-        break;
+
     case TOKEN_KEYWORD_VAL:
         if (parse_value() == ERR_OK) {
             break;
         }
         return ERR_SYNTAX;
-        break;
+
     case TOKEN_KEYWORD_RETURN:
         GET_TOKEN();
         if (/* parse_expression(&token, &symtable, &arg_type) == ERR_OK */ false /* TODO */) {
             break;
         }
         return ERR_SYNTAX;
-        break;
+
     case TOKEN_IDENTIFIER:
         GET_TOKEN();
         CHECK_TOKEN(TOKEN_ASSIGN);
@@ -329,10 +331,9 @@ ErrorCode parse_command_simple() {
             break;
         }
         return ERR_SYNTAX;
-        break;
+
     default:
         return ERR_SYNTAX;
-        break;
     }
     return ERR_OK;
 }
@@ -399,6 +400,9 @@ ErrorCode parse_separator() {
 /* TODO - add IF and WHILE statements */
 ErrorCode parse_command_complex() {
     if (token.type == TOKEN_KEYWORD_IF) {
+        if (parse_if_statement() == ERR_OK) {
+            return ERR_OK;
+        }
     }
 
     if (token.type == TOKEN_KEYWORD_WHILE) {
@@ -407,7 +411,7 @@ ErrorCode parse_command_complex() {
     return ERR_SYNTAX;
 }
 
-/* TODO - parse_expression() and ELSE block*/
+/* TODO - parse_expression() and else block maybe done*/
 ErrorCode parse_if_statement() {
     GET_TOKEN();
 
@@ -423,16 +427,51 @@ ErrorCode parse_if_statement() {
 
     if (parse_block() != ERR_OK) {
         return ERR_SYNTAX;
+    } // Curr. TOKEN == TOKEN_DEDENT
+
+    GET_TOKEN();
+    if (parse_vol_else_block() != ERR_OK) {
+        return ERR_SYNTAX; // Curr. TOKEN == TOKEN_DEDENT
+    }
+
+    return ERR_OK; // Curr. TOKEN == TOKEN_DEDENT
+}
+
+/* TODO - Maybe not idk */
+ErrorCode parse_vol_else_block() {
+    if (token.type == TOKEN_KEYWORD_ELSE) {
+        GET_TOKEN(); // IF || EOL
+        // Just ELSE / EOL - branch
+        if (token.type == TOKEN_EOL) {
+            if (parse_block() != ERR_OK) {
+                return ERR_SYNTAX;
+            }
+        }
+        // ELSE IF / IF - branch
+        if (token.type == TOKEN_KEYWORD_IF) {
+            if (parse_if_statement() != ERR_OK) {
+                return ERR_SYNTAX;
+            }
+        }
+    }
+
+    return ERR_OK; // Curr. TOKEN == TOKEN_DEDENT
+}
+
+ErrorCode parse_whlile_statement() {
+    GET_TOKEN();
+    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+        return ERR_SYNTAX;
     }
 
     GET_TOKEN();
+    CHECK_TOKEN(TOKEN_KEYWORD_DO);
 
-    return ERR_OK;
-}
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_EOL);
 
-/* TODO - Work out how should this behave */
-ErrorCode parse_vol_else_block() {
-    if (token.type == TOKEN_KEYWORD_ELSE) {
+    if (parse_block() != ERR_OK) {
+        return ERR_SYNTAX;
     }
 
     return ERR_OK;
