@@ -16,6 +16,7 @@ typedef enum {
     TYPE_DOUBLE,
     TYPE_STRING,
     TYPE_UNIT,
+    TYPE_ANY,
     TYPE_BOOL // extension boolthen
 } Type;
 
