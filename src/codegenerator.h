@@ -33,8 +33,8 @@ int gen_new_label_id(void);
  */
 void gen_push_literal(const Token *token);
 
-/* @brief PUSHSH LF@name$depth
- * @param name pinter to variable name
+/* @brief PUSHS LF@name$depth
+ * @param name pointer to variable name
  * @param scope_depth depth of the scope
  */
 void gen_push_var(const char *name, int scope_depth);
@@ -48,22 +48,89 @@ void gen_push_unit(void);
  */
 // TODO void gen_expr_op(PrecSymbol op, Type operand_type);
 
-// @brief INT@FLOATS values on top
+// @brief INT2FLOATS value on top
 void gen_conv_top_int2float(void);
 
-// @brief converts second value from top
+// @brief converts second value from top of stack from int to float, top stays on top
 void gen_conv_second_int2float(void);
 
-/* @brief tests left operant for && or ||, when needed puts result to stack and jumps to end
+/* @brief tests left operant for && or ||, whe
  * @param op operation symbol
  * @param label_id id of label
  */
 // TODO void gen_logic_start(PrecSymbol op, int label_id);
 
-/* @brief code label of
- * @param
- * @param
+/* @brief code label of end of && or ||, right operand result stays on stack
+ * @param op operation symbol
+ * @param label_id id of label
  */
 // TODO void gen_logic_end(PrecSymbol op, int label_id);
+
+/* @brief DEFVAR LF@name$depth, inside while loop must be emitted only once
+ * @param name pointer to variable name
+ * @param scope_depth depth of the scope
+ */
+void gen_defvar(const char *name, int scope_depth);
+
+/* @brief POPS LF@name$depth, value of expression must be on top of stack
+ * @param name pointer to variable name
+ * @param scope_depth depth of the scope
+ */
+void gen_assign(const char *name, int scope_depth);
+
+// @brief POPS value on top to help GF variable
+void gen_discard_top(void);
+
+/* @brief LABEL name, CREATEFRAME, PUSHFRAME, DEFVAR params and POPS them from stack
+ *  in reverse order
+ * @param name pointer to function name
+ * @param param_count number of parameters
+ * @param param_names array of parameter names, length param_count
+ * @param scope_depth depth of the scope of parameters
+ * @param returns_unit true if function returns Unit, remembered for gen_func_end
+ */
+void gen_func_start(const char *name, size_t param_count, const char *const *param_names,
+                    int scope_depth, bool returns_unit);
+
+// @brief end of function, PUSHS nil@nil when returns Unit, POPFRAME and RETURN
+void gen_func_end(void);
+
+// @brief return value must be on top of stack, POPFRAME and RETURN
+void gen_return(void);
+
+/* @brief CALL name, arguments must be on stack, return value is on top of stack after call
+ * @param name pointer to function name
+ */
+void gen_call(const char *name);
+
+/* @brief condition must be on top of stack, PUSHS bool@false and JUMPIFEQS $else$id
+ * @param label_id id of label
+ */
+void gen_if_start(int label_id);
+
+/* @brief JUMP $endif$id and LABEL $else$id, must be called even without else branch
+ * @param label_id id of label
+ */
+void gen_if_else(int label_id);
+
+/* @brief LABEL $endif$id
+ * @param label_id id of label
+ */
+void gen_if_end(int label_id);
+
+/* @brief LABEL $while$id, called before generating condition
+ * @param label_id id of label
+ */
+void gen_while_header(int label_id);
+
+/* @brief condition must be on top of stack, PUSHS bool@false and JUMPIFEQS $endwhile$id
+ * @param label_id id of label
+ */
+void gen_while_cond(int label_id);
+
+/* @brief JUMP $while$id and LABEL $endwhile$id
+ * @param label_id id of label
+ */
+void gen_while_end(int label_id);
 
 #endif
