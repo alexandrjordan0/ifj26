@@ -6,7 +6,7 @@
 #ifndef CODEGENERATOR_H
 #define CODEGENERATOR_H
 
-// TODO #include "precedence.h"
+#include "precedence.h"
 #include "scanner.h"
 #include "symtable.h"
 #include <stdbool.h>
@@ -46,7 +46,7 @@ void gen_push_unit(void);
  * @param op operation symbol
  * @param operand_type type of operand
  */
-// TODO void gen_expr_op(PrecSymbol op, Type operand_type);
+void gen_expr_op(PrecSymbol op, Type operand_type);
 
 // @brief INT2FLOATS value on top
 void gen_conv_top_int2float(void);
@@ -58,13 +58,13 @@ void gen_conv_second_int2float(void);
  * @param op operation symbol
  * @param label_id id of label
  */
-// TODO void gen_logic_start(PrecSymbol op, int label_id);
+void gen_logic_start(PrecSymbol op, int label_id);
 
 /* @brief code label of end of && or ||, right operand result stays on stack
  * @param op operation symbol
  * @param label_id id of label
  */
-// TODO void gen_logic_end(PrecSymbol op, int label_id);
+void gen_logic_end(PrecSymbol op, int label_id);
 
 /* @brief DEFVAR LF@name$depth, inside while loop must be emitted only once
  * @param name pointer to variable name
