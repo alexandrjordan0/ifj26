@@ -51,9 +51,17 @@ ErrorCode parse_command_set();
 
 ErrorCode parse_command();
 
+ErrorCode parse_command_simple_id();
+
 ErrorCode parse_command_simple();
 
 ErrorCode parse_command_complex();
+
+ErrorCode parse_arg_set();
+
+ErrorCode parse_arg_next();
+
+ErrorCode parse_term();
 
 ErrorCode parse_if_statement();
 
@@ -61,7 +69,7 @@ ErrorCode parse_vol_else_block();
 
 ErrorCode parse_else_block();
 
-ErrorCode parse_whlile_statement();
+ErrorCode parse_while_statement();
 
 ErrorCode parse_separator();
 

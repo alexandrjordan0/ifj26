@@ -187,19 +187,17 @@ ErrorCode parse_param_next() {
     CHECK_TOKEN(TOKEN_COMMA);
 
     GET_TOKEN();
-    if (parse_vol_eol() != ERR_OK) {
-        return ERR_SYNTAX;
-    } // Curr. TOKEN == EOL || ID
+    if (token.type == TOKEN_EOL) {
+        GET_TOKEN();
+    }
 
-    GET_TOKEN();
     if (parse_param() != ERR_OK) {
         return ERR_SYNTAX;
     } // Curr. TOKEN == TOKEN_~TYPE
 
-    GET_TOKEN();
     if (parse_param_next() != ERR_OK) {
         return ERR_SYNTAX;
-    } // Curr. TOKEN == TOKEN_~TYPE
+    }
 
     return ERR_OK;
 }
@@ -324,10 +322,7 @@ ErrorCode parse_command_simple() {
 
     case TOKEN_IDENTIFIER:
         GET_TOKEN();
-        CHECK_TOKEN(TOKEN_ASSIGN);
-
-        GET_TOKEN();
-        if (/* parse_expression(&token, &symtable, &arg_type) == ERR_OK */ false /* TODO */) {
+        if (parse_command_simple_id() == ERR_OK) {
             break;
         }
         return ERR_SYNTAX;
@@ -335,6 +330,80 @@ ErrorCode parse_command_simple() {
     default:
         return ERR_SYNTAX;
     }
+    return ERR_OK;
+}
+
+ErrorCode parse_command_simple_id() {
+    if (token.type == TOKEN_ASSIGN) {
+        GET_TOKEN();
+        if (/* parse_expression(...) != ERR_OK */ false) {
+            return ERR_SYNTAX;
+        }
+        return ERR_OK;
+    }
+
+    if (token.type == TOKEN_LEFTPAR) {
+        if (parse_arg_set() != ERR_OK) {
+            return ERR_SYNTAX;
+        }
+        return ERR_OK;
+    }
+
+    return ERR_SYNTAX;
+}
+
+ErrorCode parse_term() {
+    switch (token.type) {
+    case TOKEN_IDENTIFIER:
+        break;
+    case TOKEN_LIT_INT:
+        break;
+    case TOKEN_LIT_DOUBLE:
+        break;
+    case TOKEN_LIT_STRING:
+        break;
+    case TOKEN_LIT_UNIT:
+        break;
+    default:
+        return ERR_SYNTAX;
+    }
+    return ERR_OK;
+}
+
+ErrorCode parse_arg_set() {
+    GET_TOKEN();
+    if (token.type == TOKEN_RIGHTPAR) {
+        return ERR_OK;
+    }
+
+    if (parse_term() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    GET_TOKEN();
+    if (parse_arg_next() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
+    return ERR_OK;
+}
+
+ErrorCode parse_arg_next() {
+    if (token.type == TOKEN_RIGHTPAR) {
+        return ERR_OK;
+    }
+    CHECK_TOKEN(TOKEN_COMMA);
+
+    GET_TOKEN();
+    if (parse_term() != ERR_OK) {
+        return ERR_SYNTAX;
+    } // Curren. TOKEN == TOKEN_~TERM
+
+    GET_TOKEN();
+    if (parse_arg_next() != ERR_OK) {
+        return ERR_SYNTAX;
+    }
+
     return ERR_OK;
 }
 
@@ -353,7 +422,6 @@ ErrorCode parse_variable() {
     return ERR_OK;
 }
 
-/* Do I really need this OR should I just use: parse_ret_type() */
 ErrorCode parse_variable_type() {
     GET_TOKEN();
     if (token.type == TOKEN_ASSIGN) {
@@ -397,15 +465,19 @@ ErrorCode parse_separator() {
     return ERR_SYNTAX;
 }
 
-/* TODO - add IF and WHILE statements */
 ErrorCode parse_command_complex() {
     if (token.type == TOKEN_KEYWORD_IF) {
-        if (parse_if_statement() == ERR_OK) {
-            return ERR_OK;
+        if (parse_if_statement() != ERR_OK) {
+            return ERR_SYNTAX;
         }
+        return ERR_OK;
     }
 
     if (token.type == TOKEN_KEYWORD_WHILE) {
+        if (parse_while_statement() != ERR_OK) {
+            return ERR_SYNTAX;
+        }
+        return ERR_OK;
     }
 
     return ERR_SYNTAX;
