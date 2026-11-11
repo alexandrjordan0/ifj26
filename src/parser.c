@@ -71,6 +71,10 @@ ErrorCode parse_prolog() {
 }
 
 ErrorCode parse_func_set() {
+    if (token.type == TOKEN_EOF) {
+        return ERR_OK;
+    }
+    
     if (parse_func() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -256,6 +260,7 @@ ErrorCode parse_block() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_INDENT);
 
+    GET_TOKEN();
     if (parse_command() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -285,10 +290,14 @@ ErrorCode parse_command_set() {
 }
 
 ErrorCode parse_command() {
-    if (parse_command_complex() == ERR_OK) {
+    if (token.type == TOKEN_EOL) {
         return ERR_OK;
     }
 
+    if (token.type == TOKEN_KEYWORD_IF || token.type == TOKEN_KEYWORD_WHILE) {
+        return parse_command_complex();
+    }
+    
     if (parse_command_simple() == ERR_OK && parse_separator() == ERR_OK) {
         return ERR_OK;
     }
@@ -299,8 +308,6 @@ ErrorCode parse_command() {
 /* TODO - ... */
 ErrorCode parse_command_simple() {
     switch (token.type) {
-    case TOKEN_EOL:
-        break;
     case TOKEN_KEYWORD_VAR:
         if (parse_variable() == ERR_OK) {
             break;
