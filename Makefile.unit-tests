@@ -1,0 +1,17 @@
+CC = gcc
+CFLAGS = -std=c2x -pedantic -Wall -Wextra -Werror -O2 -g
+TARGET = scanner_unit_tests
+SRCS = scanner_unit_tests.c src/scanner.c src/str.c src/error.c
+
+.PHONY: all run clean
+
+all: $(TARGET)
+
+$(TARGET): $(SRCS) src/scanner.h src/str.h src/error.h
+	$(CC) $(CFLAGS) -Isrc $(SRCS) -o $(TARGET)
+
+run: $(TARGET)
+	./$(TARGET)
+
+clean:
+	rm -f $(TARGET)
