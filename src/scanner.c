@@ -395,11 +395,15 @@ ErrorCode get_next_token(Token *token) {
     if (pending_dedents > 0) {
         pending_dedents--;
         token->type = TOKEN_DEDENT;
+        token->line = line;
+        token->col = col + 1;
         return ERR_OK;
     }
     if (pending_indent) {
         pending_indent = false;
         token->type = TOKEN_INDENT;
+        token->line = line;
+        token->col = col + 1;
         return ERR_OK;
     }
 
