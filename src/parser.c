@@ -11,8 +11,6 @@
 #include "symtable.h"
 #include <stdbool.h>
 
-
-
 Token token;
 SymTable *symtable;
 
@@ -94,7 +92,6 @@ ErrorCode parse_func() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
     func_info.name = token.value.str_value.data;
-    
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_LEFTPAR);
