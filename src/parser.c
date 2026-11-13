@@ -11,8 +11,13 @@
 #include "symtable.h"
 #include <stdbool.h>
 
+
+
 Token token;
 SymTable *symtable;
+
+VarInfo var_info;
+FuncInfo func_info;
 
 #define GET_TOKEN()                                                                                \
     do {                                                                                           \
@@ -21,7 +26,6 @@ SymTable *symtable;
             return ERR_LEXICAL;                                                                    \
         }                                                                                          \
     } while (0)
-
 #define CHECK_TOKEN(something)                                                                     \
     do {                                                                                           \
         if (token.type != something) {                                                             \
@@ -89,6 +93,8 @@ ErrorCode parse_func() {
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+    func_info.name = token.value.str_value.data;
+    
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_LEFTPAR);
@@ -202,12 +208,28 @@ ErrorCode parse_param_next() {
 ErrorCode parse_type() {
     switch (token.type) {
     case TOKEN_KEYWORD_INT:
+        func_info.return_type = TYPE_INT;
+        var_info.type = TYPE_INT;
+        break;
     case TOKEN_KEYWORD_STRING:
+        func_info.return_type = TYPE_STRING;
+        var_info.type = TYPE_STRING;
+        break;
     case TOKEN_KEYWORD_DOUBLE:
+        func_info.return_type = TYPE_DOUBLE;
+        var_info.type = TYPE_DOUBLE;
+        break;
     case TOKEN_KEYWORD_UNIT:
+        func_info.return_type = TYPE_UNIT;
+        var_info.type = TYPE_UNIT;
+        break;
     case TOKEN_KEYWORD_BOOLEAN:
+        func_info.return_type = TYPE_BOOL;
+        var_info.type = TYPE_BOOL;
         break;
     default:
+        func_info.return_type = TYPE_UNKNOWN;
+        var_info.type = TYPE_UNKNOWN;
         return ERR_SYNTAX;
     }
 
