@@ -20,16 +20,10 @@ SymTable *symtable;
         if (get_next_token(&token) != ERR_OK) {                                                    \
             return ERR_LEXICAL;                                                                    \
         }                                                                                          \
-        if (&token == NULL) {                                                                      \
-            return ERR_INTERNAL;                                                                   \
-        }                                                                                          \
     } while (0)
 
 #define CHECK_TOKEN(something)                                                                     \
     do {                                                                                           \
-        if (&token == NULL) {                                                                      \
-            return ERR_INTERNAL;                                                                   \
-        }                                                                                          \
         if (token.type != something) {                                                             \
             return ERR_SYNTAX;                                                                     \
         }                                                                                          \
@@ -39,9 +33,12 @@ ErrorCode parse_program() {
 
     symtable = symtable_init();
 
+    GET_TOKEN();
     if (parse_prolog() != ERR_OK) {
         return ERR_SYNTAX;
     }
+
+    GET_TOKEN();
     if (parse_func_set() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -53,7 +50,6 @@ ErrorCode parse_program() {
 }
 
 ErrorCode parse_prolog() {
-    GET_TOKEN();
     CHECK_TOKEN(TOKEN_KEYWORD_IMPORT);
 
     GET_TOKEN();
@@ -74,7 +70,7 @@ ErrorCode parse_func_set() {
     if (token.type == TOKEN_EOF) {
         return ERR_OK;
     }
-    
+
     if (parse_func() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -114,7 +110,6 @@ ErrorCode parse_func() {
 
 /* TODO - Implement Token keyword MAIN */
 ErrorCode parse_main_anot() {
-    GET_TOKEN();
     if (token.type == TOKEN_KEYWORD_DEF) {
         return ERR_OK;
     }
@@ -160,9 +155,6 @@ ErrorCode parse_param_set() {
 }
 
 ErrorCode parse_param() {
-    if (token.type == TOKEN_EOL) {
-        GET_TOKEN();
-    }
     CHECK_TOKEN(TOKEN_IDENTIFIER);
 
     GET_TOKEN();
@@ -297,7 +289,7 @@ ErrorCode parse_command() {
     if (token.type == TOKEN_KEYWORD_IF || token.type == TOKEN_KEYWORD_WHILE) {
         return parse_command_complex();
     }
-    
+
     if (parse_command_simple() == ERR_OK && parse_separator() == ERR_OK) {
         return ERR_OK;
     }
@@ -370,6 +362,10 @@ ErrorCode parse_term() {
     case TOKEN_LIT_STRING:
         break;
     case TOKEN_LIT_UNIT:
+        break;
+    case TOKEN_KEYWORD_TRUE:
+        break;
+    case TOKEN_KEYWORD_FALSE:
         break;
     default:
         return ERR_SYNTAX;
@@ -518,26 +514,30 @@ ErrorCode parse_if_statement() {
 
 /* TODO - Maybe not idk */
 ErrorCode parse_vol_else_block() {
-    if (token.type == TOKEN_KEYWORD_ELSE) {
-        GET_TOKEN(); // IF || EOL
-        // Just ELSE / EOL - branch
-        if (token.type == TOKEN_EOL) {
-            if (parse_block() != ERR_OK) {
-                return ERR_SYNTAX;
-            }
+    if (token.type != TOKEN_KEYWORD_ELSE) {
+        return ERR_OK;
+    }
+
+    GET_TOKEN();
+
+    // Just ELSE / EOL - branch
+    if (token.type == TOKEN_EOL) {
+        if (parse_block() == ERR_OK) {
+            return ERR_OK;
         }
-        // ELSE IF / IF - branch
-        if (token.type == TOKEN_KEYWORD_IF) {
-            if (parse_if_statement() != ERR_OK) {
-                return ERR_SYNTAX;
-            }
+    }
+    // ELSE IF / IF - branch
+    if (token.type == TOKEN_KEYWORD_IF) {
+        if (parse_if_statement() == ERR_OK) {
+            return ERR_OK;
+            ;
         }
     }
 
-    return ERR_OK; // Curr. TOKEN == TOKEN_DEDENT
+    return ERR_SYNTAX; // Curr. TOKEN == TOKEN_DEDENT
 }
 
-ErrorCode parse_whlile_statement() {
+ErrorCode parse_while_statement() {
     GET_TOKEN();
     if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
         return ERR_SYNTAX;
