@@ -155,6 +155,11 @@ ErrorCode parse_func_set() {
     return ERR_OK;
 }
 
+void clean_symtable() {
+    func_info_reset();
+    symtable_scope_pop(symtable);
+}
+
 ErrorCode parse_func() {
 
     if (parse_main_anot() != ERR_OK) {
@@ -178,10 +183,12 @@ ErrorCode parse_func() {
     CHECK_TOKEN(TOKEN_LEFTPAR);
 
     if (parse_param_set() != ERR_OK) {
+        clean_symtable();
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_RIGHTPAR
 
     if (parse_return_type() != ERR_OK) {
+        clean_symtable();
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_ASSIGN
 
@@ -195,11 +202,11 @@ ErrorCode parse_func() {
     }
 
     if (parse_body() != ERR_OK) {
+        clean_symtable();
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_DEDENT
 
-    func_info_reset();
-    symtable_scope_pop(symtable);
+    clean_symtable();
     return ERR_OK;
 }
 
@@ -289,7 +296,7 @@ ErrorCode parse_param() {
     ErrorCode err = symtable_add_var(symtable, id, param_type, false);
     if (err != ERR_OK) {
         free(id);
-        return ERR_INTERNAL;
+        return err;
     }
 
     func_info.param_types[func_info.param_count] = param_type;
@@ -476,10 +483,12 @@ ErrorCode parse_command_simple_id() {
     // ID = Expression
     if (token.type == TOKEN_ASSIGN) {
         GET_TOKEN();
+
         VarInfo *found_var = symtable_find_var(symtable, var_name);
         if (found_var == NULL) {
             return ERR_SEM_UNDEF;
         }
+
         if (found_var->is_mutable) {
             if (parse_expression(&token, symtable, &found_var->type)) {
                 return ERR_SYNTAX;
@@ -565,6 +574,7 @@ ErrorCode parse_variable() {
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+
     var_name = strdup(token.value.str_value.data);
     if (var_name == NULL) {
         return ERR_INTERNAL;
@@ -575,17 +585,18 @@ ErrorCode parse_variable() {
         return ERR_SYNTAX;
     }
 
+    GET_TOKEN();
+    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
+        free(var_name);
+        return ERR_SYNTAX;
+    }
+
     ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
     if (err != ERR_OK) {
         free(var_name);
         return ERR_INTERNAL;
     }
 
-    GET_TOKEN();
-    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
-        free(var_name);
-        return ERR_SYNTAX;
-    }
     return ERR_OK;
 }
 
@@ -623,17 +634,18 @@ ErrorCode parse_value() {
         return ERR_SYNTAX;
     }
 
+    GET_TOKEN();
+    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
+        free(var_name);
+        return ERR_SYNTAX;
+    }
+
     ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
     if (err != ERR_OK) {
         free(var_name);
         return ERR_INTERNAL;
     }
 
-    GET_TOKEN();
-    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
-        free(var_name);
-        return ERR_SYNTAX;
-    }
     return ERR_OK;
 }
 
@@ -646,6 +658,18 @@ ErrorCode parse_separator() {
     }
 
     return ERR_SYNTAX;
+}
+
+ErrorCode parse_nested_blocks() {
+    if (!symtable_scope_push(symtable)) {
+        return ERR_INTERNAL;
+    }
+
+    ErrorCode err = parse_block();
+
+    symtable_scope_pop(symtable);
+
+    return err;
 }
 
 ErrorCode parse_command_complex() {
@@ -668,9 +692,10 @@ ErrorCode parse_command_complex() {
 
 /* TODO - parse_expression() and else block maybe done*/
 ErrorCode parse_if_statement() {
-    GET_TOKEN();
+    var_info.type = TYPE_BOOL;
 
-    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+    GET_TOKEN();
+    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
         return ERR_SYNTAX;
     }
 
@@ -680,7 +705,7 @@ ErrorCode parse_if_statement() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    if (parse_block() != ERR_OK) {
+    if (parse_nested_blocks() != ERR_OK) {
         return ERR_SYNTAX;
     } // Curr. TOKEN == TOKEN_DEDENT
 
@@ -701,7 +726,7 @@ ErrorCode parse_vol_else_block() {
 
     // Just ELSE / EOL - branch
     if (token.type == TOKEN_EOL) {
-        if (parse_block() == ERR_OK) {
+        if (parse_nested_blocks() == ERR_OK) {
             return ERR_OK;
         }
     }
@@ -728,7 +753,7 @@ ErrorCode parse_while_statement() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    if (parse_block() != ERR_OK) {
+    if (parse_nested_blocks() != ERR_OK) {
         return ERR_SYNTAX;
     }
 
