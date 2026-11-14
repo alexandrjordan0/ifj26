@@ -11,6 +11,7 @@
 #include "error.h"
 #include "scanner.h"
 #include "str.h"
+#include "symtable.h"
 #include <stdio.h>
 
 ErrorCode parse_program();
@@ -31,7 +32,7 @@ ErrorCode parse_param_next();
 
 ErrorCode parse_param();
 
-ErrorCode parse_type();
+ErrorCode parse_type(Type *type);
 
 ErrorCode parse_return_type();
 

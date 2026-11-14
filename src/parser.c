@@ -10,6 +10,10 @@
 #include "scanner.h"
 #include "symtable.h"
 #include <stdbool.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define PARAM_ARRAY_SIZE 20
 
 Token token;
 SymTable *symtable;
@@ -31,10 +35,34 @@ FuncInfo func_info;
         }                                                                                          \
     } while (0)
 
+static char **param_names_buffer = NULL;
+static size_t param_capacity = PARAM_ARRAY_SIZE;
+void init_arrays() {
+    Type *type_arr = malloc(sizeof(*type_arr) * param_capacity);
+    if (type_arr == NULL) {
+        error_exit(ERR_INTERNAL, "%d: Failed to allocate param_types (Parser)\n", ERR_INTERNAL);
+    }
+
+    char **name_arr = calloc(param_capacity, sizeof(*name_arr));
+    if (name_arr == NULL) {
+        free(type_arr);
+        error_exit(ERR_INTERNAL, "%d: Failed to allocate param_names (Parser)\n", ERR_INTERNAL);
+    }
+
+    param_names_buffer = name_arr;
+
+    func_info.param_types = type_arr;
+    func_info.param_names = (const char *const *)name_arr;
+    func_info.param_count = 0;
+}
+
 ErrorCode parse_program() {
 
+    // Initialization
     symtable = symtable_init();
+    init_arrays();
 
+    // Core
     GET_TOKEN();
     if (parse_prolog() != ERR_OK) {
         return ERR_SYNTAX;
@@ -47,6 +75,9 @@ ErrorCode parse_program() {
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOF);
+
+    // Cleaning
+    symtable_free(symtable);
 
     return ERR_OK;
 }
@@ -91,7 +122,9 @@ ErrorCode parse_func() {
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
-    func_info.name = token.value.str_value.data;
+
+    // Maybe I will have to use my own function
+    func_info.name = strdup(token.value.str_value.data);
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_LEFTPAR);
@@ -103,6 +136,9 @@ ErrorCode parse_func() {
     if (parse_return_type() != ERR_OK) {
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_ASSIGN
+
+    symtable_add_func(symtable, func_info.name, func_info.param_count,
+                        func_info.param_types, func_info.param_names, func_info.return_type, false);
 
     if (parse_body() != ERR_OK) {
         return ERR_SYNTAX;
@@ -144,6 +180,7 @@ ErrorCode parse_param_set() {
     GET_TOKEN();
     if (token.type == TOKEN_RIGHTPAR) {
         return ERR_OK;
+        func_info.param_count = 0;
     } // Curr. TOKEN == TOKEN_RIGHTPAR
 
     if (parse_param() != ERR_OK) {
@@ -158,16 +195,46 @@ ErrorCode parse_param_set() {
 }
 
 ErrorCode parse_param() {
+    Type param_type = TYPE_UNKNOWN;
+    if (func_info.param_count == param_capacity) {
+        size_t new_capacity = 2 * param_capacity;
+
+        Type *type_arr =
+            realloc(func_info.param_types, sizeof(*func_info.param_types) * new_capacity);
+        if (type_arr == NULL) {
+            error_exit(ERR_INTERNAL, "%d: Failed to realloc param_types (Parser)\n", ERR_INTERNAL);
+        }
+
+        func_info.param_types = type_arr;
+
+        char **names_arr = realloc(param_names_buffer, sizeof(*param_names_buffer) * new_capacity);
+        if (names_arr == NULL) {
+            free(type_arr);
+            error_exit(ERR_INTERNAL, "%d: Failed to realloc param_names (Parser)\n", ERR_INTERNAL);
+        }
+
+        param_names_buffer = names_arr;
+        func_info.param_names = (const char *const *)param_names_buffer;
+        param_capacity = new_capacity;
+    }
+
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+    char *id = strdup(token.value.str_value.data);
+    if (id == NULL) {
+        return ERR_INTERNAL;
+    }
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_COLON);
 
     GET_TOKEN();
-    if (parse_type() != ERR_OK) {
+    if (parse_type(&param_type) != ERR_OK) {
         return ERR_SYNTAX;
     }
 
+    func_info.param_types[func_info.param_count] = param_type;
+    param_names_buffer[func_info.param_count] = id;
+    func_info.param_count++;
     return ERR_OK; // CURR. TOKEN = TOKEN_~TYPE
 }
 
@@ -202,31 +269,24 @@ ErrorCode parse_param_next() {
 }
 
 /* TODO - get return type for parse_expression() */
-ErrorCode parse_type() {
+ErrorCode parse_type(Type *type) {
     switch (token.type) {
     case TOKEN_KEYWORD_INT:
-        func_info.return_type = TYPE_INT;
-        var_info.type = TYPE_INT;
+        *type = TYPE_INT;
         break;
     case TOKEN_KEYWORD_STRING:
-        func_info.return_type = TYPE_STRING;
-        var_info.type = TYPE_STRING;
+        *type = TYPE_STRING;
         break;
     case TOKEN_KEYWORD_DOUBLE:
-        func_info.return_type = TYPE_DOUBLE;
-        var_info.type = TYPE_DOUBLE;
+        *type = TYPE_DOUBLE;
         break;
     case TOKEN_KEYWORD_UNIT:
-        func_info.return_type = TYPE_UNIT;
-        var_info.type = TYPE_UNIT;
+        *type = TYPE_UNIT;
         break;
     case TOKEN_KEYWORD_BOOLEAN:
-        func_info.return_type = TYPE_BOOL;
-        var_info.type = TYPE_BOOL;
+        *type = TYPE_BOOL;
         break;
     default:
-        func_info.return_type = TYPE_UNKNOWN;
-        var_info.type = TYPE_UNKNOWN;
         return ERR_SYNTAX;
     }
 
@@ -234,6 +294,8 @@ ErrorCode parse_type() {
 }
 
 ErrorCode parse_return_type() {
+    func_info.return_type = TYPE_UNKNOWN;
+
     GET_TOKEN();
     if (token.type == TOKEN_ASSIGN) {
         return ERR_OK;
@@ -241,7 +303,7 @@ ErrorCode parse_return_type() {
     CHECK_TOKEN(TOKEN_COLON);
 
     GET_TOKEN();
-    if (parse_type() != ERR_OK) {
+    if (parse_type(&func_info.return_type) != ERR_OK) {
         return ERR_SYNTAX;
     }
 
@@ -445,6 +507,8 @@ ErrorCode parse_variable() {
 }
 
 ErrorCode parse_variable_type() {
+    var_info.type = TYPE_UNKNOWN;
+
     GET_TOKEN();
     if (token.type == TOKEN_ASSIGN) {
         return ERR_OK;
@@ -452,7 +516,7 @@ ErrorCode parse_variable_type() {
     CHECK_TOKEN(TOKEN_COLON);
 
     GET_TOKEN();
-    if (parse_type() != ERR_OK) {
+    if (parse_type(&var_info.type) != ERR_OK) {
         return ERR_SYNTAX;
     }
 
