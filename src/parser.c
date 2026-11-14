@@ -536,8 +536,11 @@ ErrorCode parse_arg_next() {
 }
 
 ErrorCode parse_variable() {
+    var_info.is_mutable = true;
+    
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+    
 
     if (parse_variable_type() != ERR_OK) {
         return ERR_SYNTAX;
@@ -570,6 +573,8 @@ ErrorCode parse_variable_type() {
 }
 
 ErrorCode parse_value() {
+    var_info.is_mutable = false;
+    
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
 
