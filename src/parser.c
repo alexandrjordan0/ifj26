@@ -7,6 +7,7 @@
 
 #include "parser.h"
 #include "error.h"
+#include "precedence.h"
 #include "scanner.h"
 #include "symtable.h"
 #include <stdbool.h>
@@ -193,12 +194,11 @@ ErrorCode parse_func() {
     return ERR_OK;
 }
 
-/* TODO - Implement Token keyword MAIN */
 ErrorCode parse_main_anot() {
     if (token.type == TOKEN_KEYWORD_DEF) {
         return ERR_OK;
     }
-    /*CHECK_TOKEN(TOKEN_KEYWORD_MAIN); -- TODO*/
+    CHECK_TOKEN(TOKEN_MAIN);
 
     if (parse_main_anot_eol() != ERR_OK) {
         return ERR_SYNTAX;
@@ -313,7 +313,6 @@ ErrorCode parse_param_next() {
     return ERR_OK;
 }
 
-/* TODO - get return type for parse_expression() */
 ErrorCode parse_type(Type *type) {
     switch (token.type) {
     case TOKEN_KEYWORD_INT:
@@ -357,7 +356,6 @@ ErrorCode parse_return_type() {
     return ERR_OK; // CURR. TOKEN = TOKEN_ASSIGN
 }
 
-/* TODO - finish parse_expression() */
 ErrorCode parse_body() {
     GET_TOKEN();
     if (token.type == TOKEN_EOL) {
@@ -366,7 +364,7 @@ ErrorCode parse_body() {
         }
     } else {
         /*&token - ..., &symtable - ..., &arg_type - type of function where it's called */
-        if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+        if (parse_expression(&token, symtable, &func_info.return_type) != ERR_OK) {
             return ERR_SYNTAX;
         }
     }
@@ -423,7 +421,6 @@ ErrorCode parse_command() {
     return ERR_SYNTAX;
 }
 
-/* TODO - ... */
 ErrorCode parse_command_simple() {
     switch (token.type) {
     case TOKEN_KEYWORD_VAR:
@@ -440,7 +437,7 @@ ErrorCode parse_command_simple() {
 
     case TOKEN_KEYWORD_RETURN:
         GET_TOKEN();
-        if (/* parse_expression(&token, &symtable, &arg_type) == ERR_OK */ false /* TODO */) {
+        if (parse_expression(&token, symtable, &func_info.return_type) == ERR_OK) {
             break;
         }
         return ERR_SYNTAX;
@@ -459,15 +456,19 @@ ErrorCode parse_command_simple() {
     return ERR_OK;
 }
 
+// TODO - ID () - funcCall (parse_expression can't do this)
 ErrorCode parse_command_simple_id() {
+    // ID = Expression
     if (token.type == TOKEN_ASSIGN) {
         GET_TOKEN();
-        if (/* parse_expression(...) != ERR_OK */ false) {
+        var_info = *symtable_find_var(symtable, var_name);
+        if (parse_expression(&token, symtable, &var_info.type)) {
             return ERR_SYNTAX;
         }
         return ERR_OK;
     }
 
+    // ID ( ARG_SET )
     if (token.type == TOKEN_LEFTPAR) {
         if (parse_arg_set() != ERR_OK) {
             return ERR_SYNTAX;
@@ -552,7 +553,7 @@ ErrorCode parse_variable() {
     if (err != ERR_OK) {
         return ERR_INTERNAL;
     }
-    
+
     GET_TOKEN();
     if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
         return ERR_SYNTAX;
