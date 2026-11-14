@@ -19,6 +19,7 @@ Token token;
 SymTable *symtable;
 
 VarInfo var_info;
+const char *var_name;
 FuncInfo func_info;
 
 #define GET_TOKEN()                                                                                \
@@ -445,6 +446,7 @@ ErrorCode parse_command_simple() {
         return ERR_SYNTAX;
 
     case TOKEN_IDENTIFIER:
+        var_name = strdup(token.value.str_value.data);
         GET_TOKEN();
         if (parse_command_simple_id() == ERR_OK) {
             break;
@@ -537,15 +539,20 @@ ErrorCode parse_arg_next() {
 
 ErrorCode parse_variable() {
     var_info.is_mutable = true;
-    
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
-    
+    var_name = strdup(token.value.str_value.data);
 
     if (parse_variable_type() != ERR_OK) {
         return ERR_SYNTAX;
     }
 
+    ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
+    if (err != ERR_OK) {
+        return ERR_INTERNAL;
+    }
+    
     GET_TOKEN();
     if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
         return ERR_SYNTAX;
@@ -574,12 +581,18 @@ ErrorCode parse_variable_type() {
 
 ErrorCode parse_value() {
     var_info.is_mutable = false;
-    
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+    var_name = strdup(token.value.str_value.data);
 
     if (parse_variable_type() != ERR_OK) {
         return ERR_SYNTAX;
+    }
+
+    ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
+    if (err != ERR_OK) {
+        return ERR_INTERNAL;
     }
 
     GET_TOKEN();
@@ -644,7 +657,6 @@ ErrorCode parse_if_statement() {
     return ERR_OK; // Curr. TOKEN == TOKEN_DEDENT
 }
 
-/* TODO - Maybe not idk */
 ErrorCode parse_vol_else_block() {
     if (token.type != TOKEN_KEYWORD_ELSE) {
         return ERR_OK;
