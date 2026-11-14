@@ -20,7 +20,7 @@ Token token;
 SymTable *symtable;
 
 VarInfo var_info;
-const char *var_name;
+char *var_name;
 FuncInfo func_info;
 
 #define GET_TOKEN()                                                                                \
@@ -107,7 +107,11 @@ ErrorCode parse_program() {
         return ERR_SYNTAX;
     }
 
-    CHECK_TOKEN(TOKEN_EOF);
+    if (token.type != TOKEN_EOF) {
+        symtable_free(symtable);
+        free_arrays();
+        return ERR_SYNTAX;
+    }
 
     // Cleaning
     symtable_free(symtable);
@@ -166,6 +170,10 @@ ErrorCode parse_func() {
         return ERR_INTERNAL;
     }
 
+    if (!symtable_scope_push(symtable)) {
+        return ERR_INTERNAL;
+    }
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_LEFTPAR);
 
@@ -191,6 +199,7 @@ ErrorCode parse_func() {
     } // CURR. TOKEN = TOKEN_DEDENT
 
     func_info_reset();
+    symtable_scope_pop(symtable);
     return ERR_OK;
 }
 
@@ -275,6 +284,12 @@ ErrorCode parse_param() {
     GET_TOKEN();
     if (parse_type(&param_type) != ERR_OK) {
         return ERR_SYNTAX;
+    }
+
+    ErrorCode err = symtable_add_var(symtable, id, param_type, false);
+    if (err != ERR_OK) {
+        free(id);
+        return ERR_INTERNAL;
     }
 
     func_info.param_types[func_info.param_count] = param_type;
@@ -461,11 +476,18 @@ ErrorCode parse_command_simple_id() {
     // ID = Expression
     if (token.type == TOKEN_ASSIGN) {
         GET_TOKEN();
-        var_info = *symtable_find_var(symtable, var_name);
-        if (parse_expression(&token, symtable, &var_info.type)) {
-            return ERR_SYNTAX;
+        VarInfo *found_var = symtable_find_var(symtable, var_name);
+        if (found_var == NULL) {
+            return ERR_SEM_UNDEF;
         }
-        return ERR_OK;
+        if (found_var->is_mutable) {
+            if (parse_expression(&token, symtable, &found_var->type)) {
+                return ERR_SYNTAX;
+            }
+            return ERR_OK;
+        }
+
+        return ERR_SEM_ASSIGN;
     }
 
     // ID ( ARG_SET )
@@ -544,18 +566,24 @@ ErrorCode parse_variable() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
     var_name = strdup(token.value.str_value.data);
+    if (var_name == NULL) {
+        return ERR_INTERNAL;
+    }
 
     if (parse_variable_type() != ERR_OK) {
+        free(var_name);
         return ERR_SYNTAX;
     }
 
     ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
     if (err != ERR_OK) {
+        free(var_name);
         return ERR_INTERNAL;
     }
 
     GET_TOKEN();
-    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
+        free(var_name);
         return ERR_SYNTAX;
     }
     return ERR_OK;
@@ -586,18 +614,24 @@ ErrorCode parse_value() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
     var_name = strdup(token.value.str_value.data);
+    if (var_name == NULL) {
+        return ERR_INTERNAL;
+    }
 
     if (parse_variable_type() != ERR_OK) {
+        free(var_name);
         return ERR_SYNTAX;
     }
 
     ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
     if (err != ERR_OK) {
+        free(var_name);
         return ERR_INTERNAL;
     }
 
     GET_TOKEN();
-    if (/* parse_expression(&token, &symtable, &arg_type) != ERR_OK */ false /* TODO */) {
+    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
+        free(var_name);
         return ERR_SYNTAX;
     }
     return ERR_OK;
