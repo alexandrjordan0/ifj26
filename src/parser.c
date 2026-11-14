@@ -56,28 +56,60 @@ void init_arrays() {
     func_info.param_count = 0;
 }
 
+void func_info_reset() {
+    free((void *)func_info.name);
+    func_info.name = NULL;
+
+    for (size_t i = 0; i < func_info.param_count; i++) {
+        free(param_names_buffer[i]);
+        param_names_buffer[i] = NULL;
+    }
+    func_info.param_count = 0;
+    func_info.return_type = TYPE_UNKNOWN;
+}
+
+void free_arrays() {
+    func_info_reset();
+
+    free(param_names_buffer);
+    free(func_info.param_types);
+
+    param_names_buffer = NULL;
+    func_info.param_names = NULL;
+    func_info.param_types = NULL;
+    param_capacity = 0;
+}
+
 ErrorCode parse_program() {
 
     // Initialization
     symtable = symtable_init();
+    if (symtable == NULL) {
+        return ERR_INTERNAL;
+    }
     init_arrays();
+    func_info_reset();
 
     // Core
     GET_TOKEN();
     if (parse_prolog() != ERR_OK) {
+        symtable_free(symtable);
+        free_arrays();
         return ERR_SYNTAX;
     }
 
     GET_TOKEN();
     if (parse_func_set() != ERR_OK) {
+        symtable_free(symtable);
+        free_arrays();
         return ERR_SYNTAX;
     }
 
-    GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOF);
 
     // Cleaning
     symtable_free(symtable);
+    free_arrays();
 
     return ERR_OK;
 }
@@ -108,6 +140,8 @@ ErrorCode parse_func_set() {
         return ERR_SYNTAX;
     }
 
+    GET_TOKEN();
+
     if (parse_func_set() != ERR_OK) {
         return ERR_SYNTAX;
     }
@@ -116,6 +150,7 @@ ErrorCode parse_func_set() {
 }
 
 ErrorCode parse_func() {
+
     if (parse_main_anot() != ERR_OK) {
         return ERR_SYNTAX;
     } // CURRENT TOKEN = TOKEN_KEYWORD_DEF
@@ -125,6 +160,9 @@ ErrorCode parse_func() {
 
     // Maybe I will have to use my own function
     func_info.name = strdup(token.value.str_value.data);
+    if (func_info.name == NULL) {
+        return ERR_INTERNAL;
+    }
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_LEFTPAR);
@@ -137,13 +175,20 @@ ErrorCode parse_func() {
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_ASSIGN
 
-    symtable_add_func(symtable, func_info.name, func_info.param_count,
-                        func_info.param_types, func_info.param_names, func_info.return_type, false);
+    ErrorCode err =
+        symtable_add_func(symtable, func_info.name, func_info.param_count, func_info.param_types,
+                          func_info.param_names, func_info.return_type, true);
+
+    if (err != ERR_OK) {
+        func_info_reset();
+        return ERR_INTERNAL;
+    }
 
     if (parse_body() != ERR_OK) {
         return ERR_SYNTAX;
     } // CURR. TOKEN = TOKEN_DEDENT
 
+    func_info_reset();
     return ERR_OK;
 }
 
@@ -209,7 +254,6 @@ ErrorCode parse_param() {
 
         char **names_arr = realloc(param_names_buffer, sizeof(*param_names_buffer) * new_capacity);
         if (names_arr == NULL) {
-            free(type_arr);
             error_exit(ERR_INTERNAL, "%d: Failed to realloc param_names (Parser)\n", ERR_INTERNAL);
         }
 
