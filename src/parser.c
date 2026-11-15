@@ -25,6 +25,9 @@ VarInfo var_info;
 char *var_name;
 FuncInfo func_info;
 
+static bool is_main_func = false;
+static size_t main_count = 0;
+
 #define GET_TOKEN()                                                                                \
     do {                                                                                           \
         if (unparsed_token) {                                                                      \
@@ -127,6 +130,13 @@ ErrorCode parse_program() {
         return err;
     }
 
+    // No Main?
+    if (main_count == 0) {
+        symtable_free(symtable);
+        free_arrays();
+        return ERR_SEM_UNDEF;
+    }
+
     if (token.type != TOKEN_EOF) {
         symtable_free(symtable);
         free_arrays();
@@ -189,6 +199,11 @@ ErrorCode parse_func() {
         return err;
     } // CURRENT TOKEN = TOKEN_KEYWORD_DEF
 
+    // TODO - CHECK if correct
+    if (main_count > 1) {
+        return ERR_SEM_REDEF;
+    }
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
 
@@ -212,6 +227,12 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_RIGHTPAR
 
+    // Main function (no parameter) 
+    if (is_main_func && func_info.param_count != 0) {
+        clean_symtable();
+        return ERR_SEM_ARGS;
+    }
+    
     err = parse_return_type();
     if (err != ERR_OK) {
         clean_symtable();
@@ -233,6 +254,11 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_DEDENT
 
+    if (is_main_func && func_info.return_type != TYPE_UNIT) {
+        clean_symtable();
+        return ERR_SEM_TYPES;
+    }
+    
     FuncInfo *found_func = symtable_find_func(symtable, func_info.name);
     if (found_func == NULL) {
         clean_symtable();
@@ -248,6 +274,7 @@ ErrorCode parse_func() {
 
 ErrorCode parse_main_anot() {
     if (token.type == TOKEN_KEYWORD_DEF) {
+        is_main_func = false;
         return ERR_OK;
     }
     CHECK_TOKEN(TOKEN_MAIN);
@@ -256,6 +283,9 @@ ErrorCode parse_main_anot() {
     if (err != ERR_OK) {
         return err;
     }
+
+    is_main_func = true;
+    main_count++;
 
     return ERR_OK; // Current token = TOKEN_KEYWORD_DEF
 }
