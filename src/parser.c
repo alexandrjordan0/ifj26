@@ -19,7 +19,7 @@
 Token token;
 SymTable *symtable;
 
-static bool unparsed_token;
+static bool unparsed_token = false;
 
 VarInfo var_info;
 char *var_name;
@@ -31,8 +31,9 @@ FuncInfo func_info;
             unparsed_token = false;                                                                \
         } else {                                                                                   \
             token_free(&token);                                                                    \
-            if (get_next_token(&token) != ERR_OK) {                                                \
-                return ERR_LEXICAL;                                                                \
+            ErrorCode get_token_err = get_next_token(&token);                                      \
+            if (get_token_err != ERR_OK) {                                                         \
+                return get_token_err;                                                              \
             }                                                                                      \
         }                                                                                          \
     } while (0)
@@ -85,7 +86,7 @@ void free_arrays() {
     param_names_buffer = NULL;
     func_info.param_names = NULL;
     func_info.param_types = NULL;
-    param_capacity = 0;
+    param_capacity = PARAM_ARRAY_SIZE;
 }
 
 ErrorCode parse_program() {
@@ -100,17 +101,19 @@ ErrorCode parse_program() {
 
     // Core
     GET_TOKEN();
-    if (parse_prolog() != ERR_OK) {
+    ErrorCode err = parse_prolog();
+    if (err != ERR_OK) {
         symtable_free(symtable);
         free_arrays();
-        return ERR_SYNTAX;
+        return err;
     }
 
     GET_TOKEN();
-    if (parse_func_set() != ERR_OK) {
+    err = parse_func_set();
+    if (err != ERR_OK) {
         symtable_free(symtable);
         free_arrays();
-        return ERR_SYNTAX;
+        return err;
     }
 
     if (token.type != TOKEN_EOF) {
@@ -148,14 +151,16 @@ ErrorCode parse_func_set() {
         return ERR_OK;
     }
 
-    if (parse_func() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_func();
+    if (err != ERR_OK) {
+        return err;
     }
 
     GET_TOKEN();
 
-    if (parse_func_set() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_func_set();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK;
@@ -168,8 +173,9 @@ void clean_symtable() {
 
 ErrorCode parse_func() {
 
-    if (parse_main_anot() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_main_anot();
+    if (err != ERR_OK) {
+        return err;
     } // CURRENT TOKEN = TOKEN_KEYWORD_DEF
 
     GET_TOKEN();
@@ -188,28 +194,31 @@ ErrorCode parse_func() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_LEFTPAR);
 
-    if (parse_param_set() != ERR_OK) {
+    err = parse_param_set();
+    if (err != ERR_OK) {
         clean_symtable();
-        return ERR_SYNTAX;
+        return err;
     } // CURR. TOKEN = TOKEN_RIGHTPAR
 
-    if (parse_return_type() != ERR_OK) {
+    err = parse_return_type();
+    if (err != ERR_OK) {
         clean_symtable();
-        return ERR_SYNTAX;
+        return err;
     } // CURR. TOKEN = TOKEN_ASSIGN
 
-    ErrorCode err =
+    ErrorCode sym_err =
         symtable_add_func(symtable, func_info.name, func_info.param_count, func_info.param_types,
                           func_info.param_names, func_info.return_type, true);
 
-    if (err != ERR_OK) {
+    if (sym_err != ERR_OK) {
         clean_symtable();
-        return ERR_INTERNAL;
+        return sym_err;
     }
 
-    if (parse_body() != ERR_OK) {
+    err = parse_body();
+    if (err != ERR_OK) {
         clean_symtable();
-        return ERR_SYNTAX;
+        return err;
     } // CURR. TOKEN = TOKEN_DEDENT
 
     clean_symtable();
@@ -222,8 +231,9 @@ ErrorCode parse_main_anot() {
     }
     CHECK_TOKEN(TOKEN_MAIN);
 
-    if (parse_main_anot_eol() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_main_anot_eol();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK; // Current token = TOKEN_KEYWORD_DEF
@@ -251,12 +261,14 @@ ErrorCode parse_param_set() {
         func_info.param_count = 0;
     } // Curr. TOKEN == TOKEN_RIGHTPAR
 
-    if (parse_param() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_param();
+    if (err != ERR_OK) {
+        return err;
     } // Curr. TOKEN == TOKEN~_TYPE
 
-    if (parse_param_next() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_param_next();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK; // CURRENT TOKEN = TOKEN_RIGHTPAR
@@ -264,6 +276,7 @@ ErrorCode parse_param_set() {
 
 ErrorCode parse_param() {
     Type param_type = TYPE_UNKNOWN;
+    // Check if array is full
     if (func_info.param_count == param_capacity) {
         size_t new_capacity = 2 * param_capacity;
 
@@ -286,6 +299,7 @@ ErrorCode parse_param() {
     }
 
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+    // Get param name
     char *id = strdup(token.value.str_value.data);
     if (id == NULL) {
         return ERR_INTERNAL;
@@ -295,16 +309,18 @@ ErrorCode parse_param() {
     CHECK_TOKEN(TOKEN_COLON);
 
     GET_TOKEN();
-    if (parse_type(&param_type) != ERR_OK) {
-        return ERR_SYNTAX;
-    }
-
-    ErrorCode err = symtable_add_var(symtable, id, param_type, false);
+    ErrorCode err = parse_type(&param_type);
     if (err != ERR_OK) {
-        free(id);
         return err;
     }
 
+    ErrorCode sym_err = symtable_add_var(symtable, id, param_type, false);
+    if (sym_err != ERR_OK) {
+        free(id);
+        return sym_err;
+    }
+
+    // Fill param array with attributes
     func_info.param_types[func_info.param_count] = param_type;
     param_names_buffer[func_info.param_count] = id;
     func_info.param_count++;
@@ -330,12 +346,14 @@ ErrorCode parse_param_next() {
         GET_TOKEN();
     }
 
-    if (parse_param() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_param();
+    if (err != ERR_OK) {
+        return err;
     } // Curr. TOKEN == TOKEN_~TYPE
 
-    if (parse_param_next() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_param_next();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK;
@@ -375,8 +393,9 @@ ErrorCode parse_return_type() {
     CHECK_TOKEN(TOKEN_COLON);
 
     GET_TOKEN();
-    if (parse_type(&func_info.return_type) != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_type(&func_info.return_type);
+    if (err != ERR_OK) {
+        return err;
     }
 
     GET_TOKEN();
@@ -385,15 +404,18 @@ ErrorCode parse_return_type() {
 }
 
 ErrorCode parse_body() {
+    ErrorCode err;
     GET_TOKEN();
     if (token.type == TOKEN_EOL) {
-        if (parse_block() != ERR_OK) {
-            return ERR_SYNTAX;
+        err = parse_block();
+        if (err != ERR_OK) {
+            return err;
         }
     } else {
+        err = parse_expression(&token, symtable, &func_info.return_type);
         /*&token - ..., &symtable - ..., &arg_type - type of function where it's called */
-        if (parse_expression(&token, symtable, &func_info.return_type) != ERR_OK) {
-            return ERR_SYNTAX;
+        if (err != ERR_OK) {
+            return err;
         }
     }
 
@@ -405,12 +427,14 @@ ErrorCode parse_block() {
     CHECK_TOKEN(TOKEN_INDENT);
 
     GET_TOKEN();
-    if (parse_command() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_command();
+    if (err != ERR_OK) {
+        return err;
     }
 
-    if (parse_command_set() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_command_set();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK; // CURR. TOKEN = TOKEN_DEDENT
@@ -422,12 +446,14 @@ ErrorCode parse_command_set() {
         return ERR_OK;
     }
 
-    if (parse_command() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_command();
+    if (err != ERR_OK) {
+        return err;
     }
 
-    if (parse_command_set() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_command_set();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK;
@@ -438,37 +464,59 @@ ErrorCode parse_command() {
         return ERR_OK;
     }
 
+    ErrorCode err;
+
     if (token.type == TOKEN_KEYWORD_IF || token.type == TOKEN_KEYWORD_WHILE) {
-        return parse_command_complex();
+        err = parse_command_complex();
+        return err;
     }
 
-    if (parse_command_simple() == ERR_OK && parse_separator() == ERR_OK) {
-        return ERR_OK;
+    err = parse_command_simple();
+    if (err != ERR_OK) {
+        return err;
+    }
+    err = parse_separator();
+    if (err != ERR_OK) {
+        return err;
     }
 
-    return ERR_SYNTAX;
+    return ERR_OK;
 }
 
+// Parse Expresion TODO
 ErrorCode parse_command_simple() {
+    ErrorCode err;
     switch (token.type) {
     case TOKEN_KEYWORD_VAR:
-        if (parse_variable() == ERR_OK) {
-            break;
+        err = parse_variable();
+        if (err != ERR_OK) {
+            return err;
         }
-        return ERR_SYNTAX;
+        break;
 
     case TOKEN_KEYWORD_VAL:
-        if (parse_value() == ERR_OK) {
-            break;
+        err = parse_value();
+        if (err != ERR_OK) {
+            return err;
         }
-        return ERR_SYNTAX;
+        break;
 
+    // TODO HERE ->
     case TOKEN_KEYWORD_RETURN:
         GET_TOKEN();
-        if (parse_expression(&token, symtable, &func_info.return_type) == ERR_OK) {
-            break;
+
+        Type expression_type = TYPE_UNKNOWN;
+
+        err = parse_expression(&token, symtable, &expression_type);
+        if (err != ERR_OK) {
+            return err;
         }
-        return ERR_SYNTAX;
+
+        if (func_info.return_type != TYPE_UNKNOWN && expression_type != func_info.return_type) {
+            return ERR_SEM_TYPES;
+        }
+
+        break;
 
     case TOKEN_IDENTIFIER:
         var_name = strdup(token.value.str_value.data);
@@ -477,10 +525,13 @@ ErrorCode parse_command_simple() {
         }
 
         GET_TOKEN();
-        if (parse_command_simple_id() == ERR_OK) {
-            break;
+        err = parse_command_simple_id();
+        if (err != ERR_OK) {
+            free(var_name);
+            var_name = NULL;
+            return err;
         }
-        return ERR_SYNTAX;
+        break;
 
     default:
         return ERR_SYNTAX;
@@ -495,6 +546,8 @@ ErrorCode parse_command_simple() {
 
 // TODO - ID () - funcCall (parse_expression can't do this)
 ErrorCode parse_command_simple_id() {
+    ErrorCode err;
+
     // ID = Expression
     if (token.type == TOKEN_ASSIGN) {
         GET_TOKEN();
@@ -507,23 +560,26 @@ ErrorCode parse_command_simple_id() {
         Type expression_type = TYPE_UNKNOWN;
 
         if (found_var->is_mutable) {
-            if (parse_expression(&token, symtable, &expression_type)) {
-                return ERR_SYNTAX;
+            err = parse_expression(&token, symtable, &expression_type);
+            if (err != ERR_OK) {
+                return err;
             }
-            return ERR_OK;
 
             if (expression_type != found_var->type) {
                 return ERR_SEM_TYPES;
             }
+
+            return ERR_OK;
         }
 
         return ERR_SEM_ASSIGN;
     }
 
-    // ID ( ARG_SET )
+    // ID ( ARG_SET ) - TODO
     if (token.type == TOKEN_LEFTPAR) {
-        if (parse_arg_set() != ERR_OK) {
-            return ERR_SYNTAX;
+        err = parse_arg_set();
+        if (err != ERR_OK) {
+            return err;
         }
         return ERR_OK;
     }
@@ -559,13 +615,15 @@ ErrorCode parse_arg_set() {
         return ERR_OK;
     }
 
-    if (parse_term() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_term();
+    if (err != ERR_OK) {
+        return err;
     }
 
     GET_TOKEN();
-    if (parse_arg_next() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_arg_next();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK;
@@ -578,13 +636,15 @@ ErrorCode parse_arg_next() {
     CHECK_TOKEN(TOKEN_COMMA);
 
     GET_TOKEN();
-    if (parse_term() != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_term();
+    if (err != ERR_OK) {
+        return err;
     } // Curren. TOKEN == TOKEN_~TERM
 
     GET_TOKEN();
-    if (parse_arg_next() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_arg_next();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK;
@@ -601,28 +661,38 @@ ErrorCode parse_variable() {
         return ERR_INTERNAL;
     }
 
-    if (parse_variable_type() != ERR_OK) {
+    ErrorCode err = parse_variable_type();
+    if (err != ERR_OK) {
         free(var_name);
-        return ERR_SYNTAX;
+        return err;
     }
 
     Type decalared_type = var_info.type;
     Type expression_type = TYPE_UNKNOWN;
 
     GET_TOKEN();
-    if (parse_expression(&token, symtable, &expression_type) != ERR_OK) {
+    err = parse_expression(&token, symtable, &expression_type);
+    if (err != ERR_OK) {
         free(var_name);
-        return ERR_SYNTAX;
+        return err;
     }
 
-    if (decalared_type != expression_type) {
+    if (decalared_type != TYPE_UNKNOWN && decalared_type != expression_type) {
+        free(var_name);
+        var_name = NULL;
         return ERR_SEM_TYPES;
     }
 
-    ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
-    if (err != ERR_OK) {
+    if (decalared_type == TYPE_UNKNOWN) {
+        var_info.type = expression_type;
+    } else {
+        var_info.type = decalared_type;
+    }
+
+    ErrorCode sym_err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
+    if (sym_err != ERR_OK) {
         free(var_name);
-        return ERR_INTERNAL;
+        return sym_err;
     }
 
     // Cleaning
@@ -642,8 +712,9 @@ ErrorCode parse_variable_type() {
     CHECK_TOKEN(TOKEN_COLON);
 
     GET_TOKEN();
-    if (parse_type(&var_info.type) != ERR_OK) {
-        return ERR_SYNTAX;
+    ErrorCode err = parse_type(&var_info.type);
+    if (err != ERR_OK) {
+        return err;
     }
 
     GET_TOKEN();
@@ -661,21 +732,38 @@ ErrorCode parse_value() {
         return ERR_INTERNAL;
     }
 
-    if (parse_variable_type() != ERR_OK) {
-        free(var_name);
-        return ERR_SYNTAX;
-    }
-
-    GET_TOKEN();
-    if (parse_expression(&token, symtable, &var_info.type) != ERR_OK) {
-        free(var_name);
-        return ERR_SYNTAX;
-    }
-
-    ErrorCode err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
+    ErrorCode err = parse_variable_type();
     if (err != ERR_OK) {
         free(var_name);
-        return ERR_INTERNAL;
+        return err;
+    }
+
+    Type decalared_type = var_info.type;
+    Type expression_type = TYPE_UNKNOWN;
+
+    GET_TOKEN();
+    err = parse_expression(&token, symtable, &expression_type);
+    if (err != ERR_OK) {
+        free(var_name);
+        return err;
+    }
+
+    if (decalared_type != TYPE_UNKNOWN && decalared_type != expression_type) {
+        free(var_name);
+        return ERR_SEM_TYPES;
+    }
+
+    // What type it should be
+    if (decalared_type == TYPE_UNKNOWN) {
+        var_info.type = expression_type;
+    } else {
+        var_info.type = decalared_type;
+    }
+
+    ErrorCode sym_err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
+    if (sym_err != ERR_OK) {
+        free(var_name);
+        return sym_err;
     }
 
     // Cleaning
@@ -709,16 +797,19 @@ ErrorCode parse_nested_blocks() {
 }
 
 ErrorCode parse_command_complex() {
+    ErrorCode err;
     if (token.type == TOKEN_KEYWORD_IF) {
-        if (parse_if_statement() != ERR_OK) {
-            return ERR_SYNTAX;
+        err = parse_if_statement();
+        if (err != ERR_OK) {
+            return err;
         }
         return ERR_OK;
     }
 
     if (token.type == TOKEN_KEYWORD_WHILE) {
-        if (parse_while_statement() != ERR_OK) {
-            return ERR_SYNTAX;
+        err = parse_while_statement();
+        if (err != ERR_OK) {
+            return err;
         }
         return ERR_OK;
     }
@@ -728,11 +819,13 @@ ErrorCode parse_command_complex() {
 
 /* TODO - parse_expression() and else block maybe done*/
 ErrorCode parse_if_statement() {
+    ErrorCode err;
     Type condition_type = TYPE_UNKNOWN;
 
     GET_TOKEN();
-    if (parse_expression(&token, symtable, &condition_type) != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_expression(&token, symtable, &condition_type);
+    if (err != ERR_OK) {
+        return err;
     }
 
     if (condition_type != TYPE_BOOL) {
@@ -745,19 +838,22 @@ ErrorCode parse_if_statement() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    if (parse_nested_blocks() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_nested_blocks();
+    if (err != ERR_OK) {
+        return err;
     } // Curr. TOKEN == TOKEN_DEDENT
 
     GET_TOKEN();
-    if (parse_vol_else_block() != ERR_OK) {
-        return ERR_SYNTAX; // Curr. TOKEN == TOKEN_DEDENT
-    }
+    err = parse_vol_else_block();
+    if (err != ERR_OK) {
+        return err;
+    } // Curr. TOKEN == TOKEN_DEDENT
 
     return ERR_OK; // Curr. TOKEN == TOKEN_DEDENT
 }
 
 ErrorCode parse_vol_else_block() {
+    ErrorCode err;
     if (token.type != TOKEN_KEYWORD_ELSE) {
         unparsed_token = true;
         return ERR_OK;
@@ -767,27 +863,32 @@ ErrorCode parse_vol_else_block() {
 
     // Just ELSE / EOL - branch
     if (token.type == TOKEN_EOL) {
-        if (parse_nested_blocks() == ERR_OK) {
-            return ERR_OK;
+        err = parse_nested_blocks();
+        if (err != ERR_OK) {
+            return err;
         }
+        return ERR_OK;
     }
     // ELSE IF / IF - branch
     if (token.type == TOKEN_KEYWORD_IF) {
-        if (parse_if_statement() == ERR_OK) {
-            return ERR_OK;
-            ;
+        err = parse_if_statement();
+        if (err != ERR_OK) {
+            return err;
         }
+        return ERR_OK;
     }
 
     return ERR_SYNTAX; // Curr. TOKEN == TOKEN_DEDENT
 }
 
 ErrorCode parse_while_statement() {
+    ErrorCode err;
     Type condition_type = TYPE_UNKNOWN;
 
     GET_TOKEN();
-    if (parse_expression(&token, symtable, &condition_type) != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_expression(&token, symtable, &condition_type);
+    if (err != ERR_OK) {
+        return err;
     }
 
     if (condition_type != TYPE_BOOL) {
@@ -800,8 +901,9 @@ ErrorCode parse_while_statement() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    if (parse_nested_blocks() != ERR_OK) {
-        return ERR_SYNTAX;
+    err = parse_nested_blocks();
+    if (err != ERR_OK) {
+        return err;
     }
 
     return ERR_OK;
