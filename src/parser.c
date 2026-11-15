@@ -89,6 +89,17 @@ void free_arrays() {
     param_capacity = PARAM_ARRAY_SIZE;
 }
 
+static bool same_types(Type type_expect, Type type_current) {
+    if (type_expect == type_current) {
+        return true;
+    }
+    if (type_expect == TYPE_DOUBLE && type_current == TYPE_INT) {
+        return true;
+    }
+
+    return false;
+}
+
 ErrorCode parse_program() {
 
     // Initialization
@@ -322,14 +333,15 @@ ErrorCode parse_param() {
         free(id);
         return token_err;
     }
-    if (token.type != TOKEN_COLON)  {
+    if (token.type != TOKEN_COLON) {
         free(id);
-        return token_err;
+        return ERR_SYNTAX;
     }
 
     GET_TOKEN();
     ErrorCode err = parse_type(&param_type);
     if (err != ERR_OK) {
+        free(id);
         return err;
     }
 
@@ -536,8 +548,13 @@ ErrorCode parse_command_simple() {
     case TOKEN_KEYWORD_RETURN:
         GET_TOKEN();
 
+        if (func_info.return_type == TYPE_UNKNOWN) {
+            return ERR_SEM_TYPES;
+        }
+
         // Is it Unit function is the question
-        if (token.type == TOKEN_EOL || token.type == TOKEN_DEDENT) {
+        if (token.type == TOKEN_EOL || token.type == TOKEN_DEDENT ||
+            token.type == TOKEN_SEMICOLON) {
             if (func_info.return_type != TYPE_UNIT) {
                 return ERR_SEM_TYPES;
             }
@@ -557,14 +574,8 @@ ErrorCode parse_command_simple() {
         // Hanging on eol
         unparsed_token = true;
 
-        if (declaration_type != TYPE_UNKNOWN && expression_type != declaration_type) {
+        if (declaration_type != TYPE_UNIT && !same_types(declaration_type, expression_type)) {
             return ERR_SEM_TYPES;
-        }
-
-        if (declaration_type == TYPE_UNKNOWN) {
-            func_info.return_type = expression_type;
-        } else {
-            func_info.return_type = declaration_type;
         }
 
         break;
