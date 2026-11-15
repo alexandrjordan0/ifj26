@@ -416,10 +416,12 @@ ErrorCode parse_body() {
         /*&token - ..., &symtable - ..., &arg_type - type of function where it's called */
         if (err != ERR_OK) {
             return err;
-        }
+        } // Curr. Token = TOKEN_EOL
+
+        CHECK_TOKEN(TOKEN_EOL);
     }
 
-    return ERR_OK;
+    return ERR_OK; // Curr. Token = TOKEN_EOL
 }
 
 ErrorCode parse_block() {
@@ -512,6 +514,9 @@ ErrorCode parse_command_simple() {
             return err;
         }
 
+        // Hanging on eol
+        unparsed_token = true;
+
         if (func_info.return_type != TYPE_UNKNOWN && expression_type != func_info.return_type) {
             return ERR_SEM_TYPES;
         }
@@ -564,6 +569,9 @@ ErrorCode parse_command_simple_id() {
             if (err != ERR_OK) {
                 return err;
             }
+
+            // Hanging on eol
+            unparsed_token = true;
 
             if (expression_type != found_var->type) {
                 return ERR_SEM_TYPES;
@@ -677,6 +685,9 @@ ErrorCode parse_variable() {
         return err;
     }
 
+    // Hanging on eol or separator
+    unparsed_token = true;
+
     if (decalared_type != TYPE_UNKNOWN && decalared_type != expression_type) {
         free(var_name);
         var_name = NULL;
@@ -727,6 +738,7 @@ ErrorCode parse_value() {
 
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
+
     var_name = strdup(token.value.str_value.data);
     if (var_name == NULL) {
         return ERR_INTERNAL;
@@ -747,6 +759,9 @@ ErrorCode parse_value() {
         free(var_name);
         return err;
     }
+
+    // Hanging on eol or semicolon
+    unparsed_token = true;
 
     if (decalared_type != TYPE_UNKNOWN && decalared_type != expression_type) {
         free(var_name);
@@ -778,6 +793,11 @@ ErrorCode parse_separator() {
     if (token.type == TOKEN_SEMICOLON) {
         return ERR_OK;
     } else if (token.type == TOKEN_EOL) {
+        return ERR_OK;
+    }
+
+    if (token.type == TOKEN_DEDENT) {
+        unparsed_token = true;
         return ERR_OK;
     }
 
@@ -832,7 +852,7 @@ ErrorCode parse_if_statement() {
         return ERR_SEM_TYPES;
     }
 
-    GET_TOKEN();
+    // Already has token
     CHECK_TOKEN(TOKEN_KEYWORD_THEN);
 
     GET_TOKEN();
@@ -895,7 +915,7 @@ ErrorCode parse_while_statement() {
         return ERR_SEM_TYPES;
     }
 
-    GET_TOKEN();
+    // Token si read by expression
     CHECK_TOKEN(TOKEN_KEYWORD_DO);
 
     GET_TOKEN();
