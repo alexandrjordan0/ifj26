@@ -54,7 +54,7 @@ void gen_conv_top_int2float(void);
 // @brief converts second value from top of stack from int to float, top stays on top
 void gen_conv_second_int2float(void);
 
-/* @brief tests left operant for && or ||, whe
+/* @brief tests left operand for && or ||, when result is known right operand is skipped
  * @param op operation symbol
  * @param label_id id of label
  */
@@ -87,7 +87,8 @@ void gen_discard_top(void);
  * @param param_count number of parameters
  * @param param_names array of parameter names, length param_count
  * @param scope_depth depth of the scope of parameters
- * @param returns_unit true if function returns Unit, remembered for gen_func_end
+ * @param returns_unit true if function returns Unit (explicit or inferred), remembered for
+ *  gen_func_end
  */
 void gen_func_start(const char *name, size_t param_count, const char *const *param_names,
                     int scope_depth, bool returns_unit);
@@ -95,7 +96,7 @@ void gen_func_start(const char *name, size_t param_count, const char *const *par
 // @brief end of function, PUSHS nil@nil when returns Unit, POPFRAME and RETURN
 void gen_func_end(void);
 
-// @brief return value must be on top of stack, POPFRAME and RETURN
+// @brief return value must be on top of stack (gen_push_unit for bare return), POPFRAME and RETURN
 void gen_return(void);
 
 /* @brief CALL name, arguments must be on stack, return value is on top of stack after call
