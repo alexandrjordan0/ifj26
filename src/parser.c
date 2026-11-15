@@ -188,6 +188,7 @@ ErrorCode parse_func() {
     }
 
     if (!symtable_scope_push(symtable)) {
+        func_info_reset();
         return ERR_INTERNAL;
     }
 
@@ -412,11 +413,17 @@ ErrorCode parse_body() {
             return err;
         }
     } else {
-        err = parse_expression(&token, symtable, &func_info.return_type);
-        /*&token - ..., &symtable - ..., &arg_type - type of function where it's called */
+        Type decared_type = func_info.return_type;
+        Type expression_type = TYPE_UNKNOWN;
+
+        err = parse_expression(&token, symtable, &expression_type);
         if (err != ERR_OK) {
             return err;
         } // Curr. Token = TOKEN_EOL
+
+        if (decared_type != TYPE_UNKNOWN && expression_type != decared_type) {
+            return ERR_SEM_TYPES;
+        }
 
         CHECK_TOKEN(TOKEN_EOL);
     }
@@ -485,7 +492,6 @@ ErrorCode parse_command() {
     return ERR_OK;
 }
 
-// Parse Expresion TODO
 ErrorCode parse_command_simple() {
     ErrorCode err;
     switch (token.type) {
@@ -503,10 +509,19 @@ ErrorCode parse_command_simple() {
         }
         break;
 
-    // TODO HERE ->
     case TOKEN_KEYWORD_RETURN:
         GET_TOKEN();
 
+        // Is it Unit function is the question
+        if (token.type == TOKEN_EOL || token.type == TOKEN_DEDENT) {
+            if (func_info.return_type != TYPE_UNIT) {
+                return ERR_SEM_TYPES;
+            }
+
+            unparsed_token = true;
+            break;
+        }
+        
         Type expression_type = TYPE_UNKNOWN;
 
         err = parse_expression(&token, symtable, &expression_type);
