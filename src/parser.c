@@ -222,6 +222,15 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_DEDENT
 
+    FuncInfo *found_func = symtable_find_func(symtable, func_info.name);
+    if (found_func == NULL) {
+        clean_symtable();
+        return ERR_INTERNAL;
+    }
+
+    // return_type form function body
+    found_func->return_type = func_info.return_type;
+
     clean_symtable();
     return ERR_OK;
 }
@@ -306,8 +315,17 @@ ErrorCode parse_param() {
         return ERR_INTERNAL;
     }
 
-    GET_TOKEN();
-    CHECK_TOKEN(TOKEN_COLON);
+    // Freeing ID when error
+    token_free(&token);
+    ErrorCode token_err = get_next_token(&token);
+    if (token_err != ERR_OK) {
+        free(id);
+        return token_err;
+    }
+    if (token.type != TOKEN_COLON)  {
+        free(id);
+        return token_err;
+    }
 
     GET_TOKEN();
     ErrorCode err = parse_type(&param_type);
@@ -425,6 +443,12 @@ ErrorCode parse_body() {
             return ERR_SEM_TYPES;
         }
 
+        if (decared_type == TYPE_UNKNOWN) {
+            func_info.return_type = expression_type;
+        } else {
+            func_info.return_type = decared_type;
+        }
+
         CHECK_TOKEN(TOKEN_EOL);
     }
 
@@ -521,7 +545,8 @@ ErrorCode parse_command_simple() {
             unparsed_token = true;
             break;
         }
-        
+
+        Type declaration_type = func_info.return_type;
         Type expression_type = TYPE_UNKNOWN;
 
         err = parse_expression(&token, symtable, &expression_type);
@@ -532,8 +557,14 @@ ErrorCode parse_command_simple() {
         // Hanging on eol
         unparsed_token = true;
 
-        if (func_info.return_type != TYPE_UNKNOWN && expression_type != func_info.return_type) {
+        if (declaration_type != TYPE_UNKNOWN && expression_type != declaration_type) {
             return ERR_SEM_TYPES;
+        }
+
+        if (declaration_type == TYPE_UNKNOWN) {
+            func_info.return_type = expression_type;
+        } else {
+            func_info.return_type = declaration_type;
         }
 
         break;
