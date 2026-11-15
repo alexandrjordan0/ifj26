@@ -451,7 +451,8 @@ ErrorCode parse_body() {
             return err;
         } // Curr. Token = TOKEN_EOL
 
-        if (decared_type != TYPE_UNKNOWN && expression_type != decared_type) {
+        if (decared_type != TYPE_UNKNOWN && decared_type != TYPE_UNIT &&
+            !same_types(decared_type, expression_type)) {
             return ERR_SEM_TYPES;
         }
 
@@ -630,7 +631,7 @@ ErrorCode parse_command_simple_id() {
             // Hanging on eol
             unparsed_token = true;
 
-            if (expression_type != found_var->type) {
+            if (!same_types(found_var->type, expression_type)) {
                 return ERR_SEM_TYPES;
             }
 
@@ -745,7 +746,7 @@ ErrorCode parse_variable() {
     // Hanging on eol or separator
     unparsed_token = true;
 
-    if (decalared_type != TYPE_UNKNOWN && decalared_type != expression_type) {
+    if (decalared_type != TYPE_UNKNOWN && !same_types(decalared_type, expression_type)) {
         free(var_name);
         var_name = NULL;
         return ERR_SEM_TYPES;
@@ -820,7 +821,7 @@ ErrorCode parse_value() {
     // Hanging on eol or semicolon
     unparsed_token = true;
 
-    if (decalared_type != TYPE_UNKNOWN && decalared_type != expression_type) {
+    if (decalared_type != TYPE_UNKNOWN && !same_types(decalared_type, expression_type)) {
         free(var_name);
         return ERR_SEM_TYPES;
     }
