@@ -19,12 +19,11 @@
 Token token;
 SymTable *symtable;
 
-static bool unparsed_token = false;
-
 VarInfo var_info;
 char *var_name;
 FuncInfo func_info;
 
+static bool unparsed_token = false;
 static bool is_main_func = false;
 static size_t main_count = 0;
 
@@ -92,6 +91,14 @@ void free_arrays() {
     param_capacity = PARAM_ARRAY_SIZE;
 }
 
+void init_parser() {
+    init_arrays();
+    func_info_reset();
+    unparsed_token = false;
+    is_main_func = false;
+    main_count = 0;
+}
+
 static bool same_types(Type type_expect, Type type_current) {
     if (type_expect == type_current) {
         return true;
@@ -110,8 +117,7 @@ ErrorCode parse_program() {
     if (symtable == NULL) {
         return ERR_INTERNAL;
     }
-    init_arrays();
-    func_info_reset();
+    init_parser();
 
     // Core
     GET_TOKEN();
@@ -130,17 +136,17 @@ ErrorCode parse_program() {
         return err;
     }
 
+    if (token.type != TOKEN_EOF) {
+        symtable_free(symtable);
+        free_arrays();
+        return ERR_SYNTAX;
+    }
+
     // No Main?
     if (main_count == 0) {
         symtable_free(symtable);
         free_arrays();
         return ERR_SEM_UNDEF;
-    }
-
-    if (token.type != TOKEN_EOF) {
-        symtable_free(symtable);
-        free_arrays();
-        return ERR_SYNTAX;
     }
 
     // Cleaning
@@ -218,8 +224,23 @@ ErrorCode parse_func() {
         return ERR_INTERNAL;
     }
 
-    GET_TOKEN();
-    CHECK_TOKEN(TOKEN_LEFTPAR);
+    // GET_TOKEN with symtable memeory clean
+    if (unparsed_token) {
+        unparsed_token = false;
+    } else {
+        token_free(&token);
+        err = get_next_token(&token);
+        if (err != ERR_OK) {
+            clean_symtable();
+            return err;
+        }
+    }
+
+    // CHECK_TOKEN with clean
+    if (token.type != TOKEN_LEFTPAR) {
+        clean_symtable();
+        return ERR_SYNTAX;
+    }
 
     err = parse_param_set();
     if (err != ERR_OK) {
@@ -227,12 +248,12 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_RIGHTPAR
 
-    // Main function (no parameter) 
+    // Main function (no parameter)
     if (is_main_func && func_info.param_count != 0) {
         clean_symtable();
         return ERR_SEM_ARGS;
     }
-    
+
     err = parse_return_type();
     if (err != ERR_OK) {
         clean_symtable();
@@ -254,11 +275,12 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_DEDENT
 
+    // Check final funtion type
     if (is_main_func && func_info.return_type != TYPE_UNIT) {
         clean_symtable();
         return ERR_SEM_TYPES;
     }
-    
+
     FuncInfo *found_func = symtable_find_func(symtable, func_info.name);
     if (found_func == NULL) {
         clean_symtable();
@@ -308,8 +330,8 @@ ErrorCode parse_main_anot_eol() {
 ErrorCode parse_param_set() {
     GET_TOKEN();
     if (token.type == TOKEN_RIGHTPAR) {
-        return ERR_OK;
         func_info.param_count = 0;
+        return ERR_OK;
     } // Curr. TOKEN == TOKEN_RIGHTPAR
 
     ErrorCode err = parse_param();
@@ -326,6 +348,7 @@ ErrorCode parse_param_set() {
 }
 
 ErrorCode parse_param() {
+    ErrorCode err;
     Type param_type = TYPE_UNKNOWN;
     // Check if array is full
     if (func_info.param_count == param_capacity) {
@@ -357,19 +380,34 @@ ErrorCode parse_param() {
     }
 
     // Freeing ID when error
-    token_free(&token);
-    ErrorCode token_err = get_next_token(&token);
-    if (token_err != ERR_OK) {
-        free(id);
-        return token_err;
+    if (unparsed_token) {
+        unparsed_token = false;
+    } else {
+        token_free(&token);
+        err = get_next_token(&token);
+        if (err != ERR_OK) {
+            free(id);
+            return err;
+        }
     }
     if (token.type != TOKEN_COLON) {
         free(id);
         return ERR_SYNTAX;
     }
 
-    GET_TOKEN();
-    ErrorCode err = parse_type(&param_type);
+    // GET_TOKEN with symtable memeory clean
+    if (unparsed_token) {
+        unparsed_token = false;
+    } else {
+        token_free(&token);
+        err = get_next_token(&token);
+        if (err != ERR_OK) {
+            free(id);
+            return err;
+        }
+    }
+
+    err = parse_type(&param_type);
     if (err != ERR_OK) {
         free(id);
         return err;
@@ -647,7 +685,7 @@ ErrorCode parse_command_simple_id() {
 
         VarInfo *found_var = symtable_find_var(symtable, var_name);
         if (found_var == NULL) {
-            return ERR_SEM_UNDEF;
+            return ERR_SEM_ASSIGN;
         }
 
         Type expression_type = TYPE_UNKNOWN;
@@ -760,6 +798,7 @@ ErrorCode parse_variable() {
     ErrorCode err = parse_variable_type();
     if (err != ERR_OK) {
         free(var_name);
+        var_name = NULL;
         return err;
     }
 
@@ -770,6 +809,7 @@ ErrorCode parse_variable() {
     err = parse_expression(&token, symtable, &expression_type);
     if (err != ERR_OK) {
         free(var_name);
+        var_name = NULL;
         return err;
     }
 
@@ -791,6 +831,7 @@ ErrorCode parse_variable() {
     ErrorCode sym_err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
     if (sym_err != ERR_OK) {
         free(var_name);
+        var_name = NULL;
         return sym_err;
     }
 
@@ -835,6 +876,7 @@ ErrorCode parse_value() {
     ErrorCode err = parse_variable_type();
     if (err != ERR_OK) {
         free(var_name);
+        var_name = NULL;
         return err;
     }
 
@@ -845,6 +887,7 @@ ErrorCode parse_value() {
     err = parse_expression(&token, symtable, &expression_type);
     if (err != ERR_OK) {
         free(var_name);
+        var_name = NULL;
         return err;
     }
 
@@ -853,6 +896,7 @@ ErrorCode parse_value() {
 
     if (decalared_type != TYPE_UNKNOWN && !same_types(decalared_type, expression_type)) {
         free(var_name);
+        var_name = NULL;
         return ERR_SEM_TYPES;
     }
 
@@ -866,6 +910,7 @@ ErrorCode parse_value() {
     ErrorCode sym_err = symtable_add_var(symtable, var_name, var_info.type, var_info.is_mutable);
     if (sym_err != ERR_OK) {
         free(var_name);
+        var_name = NULL;
         return sym_err;
     }
 
