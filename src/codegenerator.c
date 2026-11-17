@@ -34,6 +34,10 @@ static int label_counter = 0;
 // remembered from gen_func_start for gen_func_end
 static bool cur_func_returns_unit = false;
 
+// true when last generated statement was expression, its value is in GF@$last
+// block ending with definition, assignment, if or while has result ()
+static bool last_stmt_is_expr = false;
+
 // names of builtin functions, labels are prefixed with $
 static const char *const builtin_names[] = {
     "print", "readLine",  "readInt", "readDouble", "readBoolean", "toStr",
@@ -127,7 +131,7 @@ static bool is_builtin(const char *name) {
 
 // builtin functions, arguments are on data stack
 // return value is left on data stack
-static const char builtins_code[] =
+static const char *const builtins_code[] = {
     // print(value: Any): Unit
     "LABEL $print\n"
     "CREATEFRAME\n"
@@ -144,7 +148,7 @@ static const char builtins_code[] =
     "LABEL $print$end\n"
     "PUSHS nil@nil\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // readLine(): String
     "LABEL $readLine\n"
@@ -157,7 +161,7 @@ static const char builtins_code[] =
     "LABEL $readLine$end\n"
     "PUSHS LF@value\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // readInt(): Int
     "LABEL $readInt\n"
@@ -165,12 +169,19 @@ static const char builtins_code[] =
     "PUSHFRAME\n"
     "DEFVAR LF@value\n"
     "READ LF@value int\n"
-    "JUMPIFNEQ $readInt$end LF@value nil@nil\n"
+    "JUMPIFEQ $readInt$invalid LF@value nil@nil\n"
+    // Int is 32-bit, value out of range is invalid input
+    "DEFVAR LF@cond\n"
+    "LT LF@cond LF@value int@-2147483648\n"
+    "JUMPIFEQ $readInt$invalid LF@cond bool@true\n"
+    "GT LF@cond LF@value int@2147483647\n"
+    "JUMPIFEQ $readInt$end LF@cond bool@false\n"
+    "LABEL $readInt$invalid\n"
     "MOVE LF@value int@0\n"
     "LABEL $readInt$end\n"
     "PUSHS LF@value\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // readDouble(): Double
     "LABEL $readDouble\n"
@@ -183,7 +194,7 @@ static const char builtins_code[] =
     "LABEL $readDouble$end\n"
     "PUSHS LF@value\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // readBoolean(): Boolean
     "LABEL $readBoolean\n"
@@ -196,7 +207,7 @@ static const char builtins_code[] =
     "LABEL $readBoolean$end\n"
     "PUSHS LF@value\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // toStr(value: Any): String
     "LABEL $toStr\n"
@@ -229,12 +240,53 @@ static const char builtins_code[] =
     "LABEL $toStr$end\n"
     "PUSHS LF@value\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
-    // toInt(value: Double): Int
+    // toInt(value: Double): Int, saturates to Int range like Scala
     "LABEL $toInt\n"
-    "FLOAT2INTS\n"
+    "POPS GF@$tmp1\n"
+    // NaN is not equal to itself and converts to 0
+    "EQ GF@$tmp2 GF@$tmp1 GF@$tmp1\n"
+    "JUMPIFEQ $toInt$nan GF@$tmp2 bool@false\n"
+    "LT GF@$tmp2 GF@$tmp1 float@0x1.fffffffcp+30\n"
+    "JUMPIFEQ $toInt$max GF@$tmp2 bool@false\n"
+    "GT GF@$tmp2 GF@$tmp1 float@-0x1p+31\n"
+    "JUMPIFEQ $toInt$min GF@$tmp2 bool@false\n"
+    "FLOAT2INT GF@$tmp1 GF@$tmp1\n"
+    "PUSHS GF@$tmp1\n"
     "RETURN\n"
+    "LABEL $toInt$max\n"
+    "PUSHS int@2147483647\n"
+    "RETURN\n"
+    "LABEL $toInt$min\n"
+    "PUSHS int@-2147483648\n"
+    "RETURN\n"
+    "LABEL $toInt$nan\n"
+    "PUSHS int@0\n"
+    "RETURN\n",
+
+    // wraps int on top of stack to 32-bit range (Int overflow semantics of Scala)
+    "LABEL $wrap32\n"
+    "POPS GF@$tmp1\n"
+    "LT GF@$tmp2 GF@$tmp1 int@-2147483648\n"
+    "JUMPIFEQ $wrap32$do GF@$tmp2 bool@true\n"
+    "GT GF@$tmp2 GF@$tmp1 int@2147483647\n"
+    "JUMPIFEQ $wrap32$do GF@$tmp2 bool@true\n"
+    "PUSHS GF@$tmp1\n"
+    "RETURN\n"
+    "LABEL $wrap32$do\n"
+    // ((x + 2^31) mod 2^32) - 2^31, IDIV truncates so negative remainder is corrected
+    "ADD GF@$tmp1 GF@$tmp1 int@2147483648\n"
+    "IDIV GF@$tmp2 GF@$tmp1 int@4294967296\n"
+    "MUL GF@$tmp2 GF@$tmp2 int@4294967296\n"
+    "SUB GF@$tmp1 GF@$tmp1 GF@$tmp2\n"
+    "LT GF@$tmp2 GF@$tmp1 int@0\n"
+    "JUMPIFEQ $wrap32$positive GF@$tmp2 bool@false\n"
+    "ADD GF@$tmp1 GF@$tmp1 int@4294967296\n"
+    "LABEL $wrap32$positive\n"
+    "SUB GF@$tmp1 GF@$tmp1 int@2147483648\n"
+    "PUSHS GF@$tmp1\n"
+    "RETURN\n",
 
     // strLength(value: String): Int
     "LABEL $strLength\n"
@@ -246,7 +298,7 @@ static const char builtins_code[] =
     "STRLEN LF@len LF@value\n"
     "PUSHS LF@len\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // subStr(value: String, start: Int, end: Int): String
     "LABEL $subStr\n"
@@ -285,7 +337,7 @@ static const char builtins_code[] =
     "LABEL $subStr$end\n"
     "PUSHS LF@result\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // ord(value: String, index: Int): Int
     "LABEL $ord\n"
@@ -310,14 +362,19 @@ static const char builtins_code[] =
     "PUSHS int@-1\n"
     "LABEL $ord$end\n"
     "POPFRAME\n"
-    "RETURN\n"
+    "RETURN\n",
 
     // chr(code: Int): String
     "LABEL $chr\n"
     "INT2CHARS\n"
-    "RETURN\n";
+    "RETURN\n",
+};
 
-static void gen_builtins(void) { fputs(builtins_code, stdout); }
+static void gen_builtins(void) {
+    for (size_t i = 0; i < sizeof(builtins_code) / sizeof(builtins_code[0]); i++) {
+        fputs(builtins_code[i], stdout);
+    }
+}
 
 void gen_init(void) {
     if (!str_init(&code) || !str_init(&body) || !str_init(&defvars)) {
@@ -327,6 +384,7 @@ void gen_init(void) {
     in_function = false;
     label_counter = 0;
     cur_func_returns_unit = false;
+    last_stmt_is_expr = false;
 }
 
 void gen_finish(const char *main_name) {
@@ -397,6 +455,13 @@ void gen_push_var(const char *name, int scope_depth) {
 
 void gen_push_unit(void) { emit("PUSHS nil@nil"); }
 
+// Int result is computed in 64-bit int of IFJcode26, wraps it to 32-bit
+static void emit_int_wrap(Type operand_type) {
+    if (operand_type == TYPE_INT) {
+        emit("CALL $wrap32");
+    }
+}
+
 void gen_expr_op(PrecSymbol op, Type operand_type) {
     switch (op) {
     case PREC_SYM_PLUS:
@@ -408,17 +473,22 @@ void gen_expr_op(PrecSymbol op, Type operand_type) {
             emit("PUSHS GF@$tmp1");
         } else {
             emit("ADDS");
+            emit_int_wrap(operand_type);
         }
         break;
     case PREC_SYM_MINUS:
         emit("SUBS");
+        emit_int_wrap(operand_type);
         break;
     case PREC_SYM_MUL:
         emit("MULS");
+        emit_int_wrap(operand_type);
         break;
     case PREC_SYM_DIV:
         if (operand_type == TYPE_INT) {
+            // Int.MinValue / -1 overflows
             emit("IDIVS");
+            emit_int_wrap(operand_type);
         } else {
             emit("DIVS");
         }
@@ -455,6 +525,7 @@ void gen_expr_op(PrecSymbol op, Type operand_type) {
             emit("PUSHS float@%a", -1.0);
         }
         emit("MULS");
+        emit_int_wrap(operand_type);
         break;
     case PREC_SYM_AND:
     case PREC_SYM_OR:
@@ -532,9 +603,13 @@ void gen_assign(const char *name, int scope_depth) {
         error_exit(ERR_INTERNAL, "gen_assign: NULL name");
     }
     emit("POPS LF@%s$%d", name, scope_depth);
+    last_stmt_is_expr = false;
 }
 
-void gen_discard_top(void) { emit("POPS GF@$last"); }
+void gen_discard_top(void) {
+    emit("POPS GF@$last");
+    last_stmt_is_expr = true;
+}
 
 void gen_func_start(const char *name, size_t param_count, const char *const *param_names,
                     int scope_depth, bool returns_unit) {
@@ -566,10 +641,12 @@ void gen_func_start(const char *name, size_t param_count, const char *const *par
     current_buffer = &body;
     in_function = true;
     cur_func_returns_unit = returns_unit;
+    last_stmt_is_expr = false;
 }
 
 void gen_func_end(void) {
-    if (cur_func_returns_unit) {
+    // inferred Unit is not known in gen_func_start, last statement decides
+    if (cur_func_returns_unit || !last_stmt_is_expr) {
         emit("PUSHS nil@nil");
     } else {
         emit("PUSHS GF@$last");
@@ -598,6 +675,7 @@ void gen_return(void) {
     }
     emit("POPFRAME");
     emit("RETURN");
+    last_stmt_is_expr = false;
 }
 
 void gen_call(const char *name) {
@@ -622,7 +700,10 @@ void gen_if_else(int label_id) {
     emit("LABEL $else$%d", label_id);
 }
 
-void gen_if_end(int label_id) { emit("LABEL $endif$%d", label_id); }
+void gen_if_end(int label_id) {
+    emit("LABEL $endif$%d", label_id);
+    last_stmt_is_expr = false;
+}
 
 void gen_while_header(int label_id) { emit("LABEL $while$%d", label_id); }
 
@@ -634,4 +715,5 @@ void gen_while_cond(int label_id) {
 void gen_while_end(int label_id) {
     emit("JUMP $while$%d", label_id);
     emit("LABEL $endwhile$%d", label_id);
+    last_stmt_is_expr = false;
 }
