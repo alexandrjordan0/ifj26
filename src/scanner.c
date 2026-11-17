@@ -25,6 +25,11 @@ static int paren_depth = 0; // parentehsis nesting
 static int look_ahead[2];
 static int la_count = 0;
 
+static Token lookahead_token;
+static ErrorCode lookahead_error;
+static bool lookahead_ready = false;
+static bool reading_lookahead = false;
+
 void scanner_init(void) {
     line = 1;
     col = 0;
@@ -355,6 +360,17 @@ static ErrorCode finish_string(Token *token, string_t *buf) {
 /* MAIN FUNCTION          */
 /*------------------------*/
 ErrorCode get_next_token(Token *token) {
+    if (lookahead_ready && !reading_lookahead) {
+        ErrorCode error = lookahead_error;
+
+        *token = lookahead_token;
+        memset(&lookahead_token, 0, sizeof(lookahead_token));
+
+        lookahead_ready = false;
+        return error;
+    }
+    
+    
     if (pending_dedents > 0) {
         pending_dedents--;
         token->type = TOKEN_DEDENT;
@@ -981,6 +997,20 @@ ErrorCode get_next_token(Token *token) {
             break;
         }
     }
+}
+
+ErrorCode peek_next_token(Token **token) {
+    if (!lookahead_ready) {
+        reading_lookahead = true;
+        lookahead_error = get_next_token(&lookahead_token);
+        reading_lookahead = false;
+
+        lookahead_ready = true;
+    }
+
+    *token = &lookahead_token;
+
+    return lookahead_error;
 }
 
 void token_free(Token *token) {
