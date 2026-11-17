@@ -17,6 +17,7 @@
 #define PARAM_ARRAY_SIZE 20
 
 Token token;
+Token *peek_token;
 SymTable *symtable;
 
 VarInfo var_info;
@@ -237,16 +238,19 @@ ErrorCode parse_func() {
     }
 
     // CHECK_TOKEN with clean
-    if (token.type != TOKEN_LEFTPAR) {
+    if (token.type == TOKEN_LEFTPAR) {
+        err = parse_param_set();
+        if (err != ERR_OK) {
+            clean_symtable();
+            return err;
+        } // CURR. TOKEN = TOKEN_RIGHTPAR
+    // Check for LIT_UNIT TOKEN
+    } else if (token.type == TOKEN_LIT_UNIT) {
+        func_info.param_count = 0;
+    } else {
         clean_symtable();
         return ERR_SYNTAX;
     }
-
-    err = parse_param_set();
-    if (err != ERR_OK) {
-        clean_symtable();
-        return err;
-    } // CURR. TOKEN = TOKEN_RIGHTPAR
 
     // Main function (no parameter)
     if (is_main_func && func_info.param_count != 0) {
@@ -655,7 +659,13 @@ ErrorCode parse_command_simple() {
             return ERR_INTERNAL;
         }
 
-        GET_TOKEN();
+        err = peek_next_token(&peek_token);
+        if (err != ERR_OK) {
+            free(var_name);
+            var_name = NULL;
+            return err;
+        }
+
         err = parse_command_simple_id();
         if (err != ERR_OK) {
             free(var_name);
@@ -678,19 +688,21 @@ ErrorCode parse_command_simple() {
 // TODO - ID () - funcCall (parse_expression can't do this)
 ErrorCode parse_command_simple_id() {
     ErrorCode err;
+    Type expression_type = TYPE_UNKNOWN;
 
     // ID = Expression
-    if (token.type == TOKEN_ASSIGN) {
-        GET_TOKEN();
-
+    if (peek_token->type == TOKEN_ASSIGN) {
+        
         VarInfo *found_var = symtable_find_var(symtable, var_name);
         if (found_var == NULL) {
             return ERR_SEM_ASSIGN;
         }
 
-        Type expression_type = TYPE_UNKNOWN;
-
         if (found_var->is_mutable) {
+            //1.gt ASSSIGN -> 2.gt litTOKEN
+            GET_TOKEN();
+            GET_TOKEN();
+            
             err = parse_expression(&token, symtable, &expression_type);
             if (err != ERR_OK) {
                 return err;
@@ -710,11 +722,39 @@ ErrorCode parse_command_simple_id() {
     }
 
     // ID ( ARG_SET ) - TODO
-    if (token.type == TOKEN_LEFTPAR) {
-        err = parse_arg_set();
+    if (peek_token->type == TOKEN_LEFTPAR) {
+        FuncInfo *found_func = symtable_find_func(symtable, var_name);
+        if (found_func == NULL) {
+            return ERR_SEM_ASSIGN;
+        }
+
+        err = parse_expression(&token, symtable, &expression_type);
         if (err != ERR_OK) {
             return err;
         }
+
+        unparsed_token = true;
+
+        if (!same_types(found_func->return_type, expression_type)) {
+            return ERR_SEM_TYPES;
+        }
+
+        return ERR_OK;
+    }
+
+    if (peek_token->type == TOKEN_PLUS || peek_token->type == TOKEN_MINUS ||
+        peek_token->type == TOKEN_MUL || peek_token->type == TOKEN_DIV) {
+        err = parse_expression(&token, symtable, &expression_type);
+        if (err != ERR_OK) {
+            return ERR_OK;
+        }
+
+        unparsed_token = true;
+
+        if (!same_types(func_info.return_type, expression_type)) {
+            return ERR_SEM_TYPES;
+        }
+
         return ERR_OK;
     }
 
