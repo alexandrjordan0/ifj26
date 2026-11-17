@@ -100,4 +100,10 @@ ErrorCode get_next_token(Token *token);
  */
 void token_free(Token *token);
 
+/*
+* @brief peeks next token
+* @param token pointer to Token
+* @return ERR_OK(0), ERR_LEXICAL(1), ERR_INTERNAL(99)
+*/
+ErrorCode peek_next_token(Token **token);
 #endif
