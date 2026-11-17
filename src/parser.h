@@ -14,6 +14,23 @@
 #include "symtable.h"
 #include <stdio.h>
 
+typedef enum {
+    STAT_NONE,
+    STAT_EXPRESSION,
+    STAT_IF,
+    STAT_RETURN,
+    STAT_WHILE,
+    STAT_OTHER
+} statement_type;
+
+typedef struct block_result {
+    Type result_type;
+    bool returns_always;
+    bool unit_branch;
+    bool is_statement;
+    statement_type last_statement;
+} block_result;
+
 ErrorCode parse_program();
 
 ErrorCode parse_prolog();
@@ -50,11 +67,11 @@ ErrorCode parse_block();
 
 ErrorCode parse_command_set();
 
-ErrorCode parse_command();
+ErrorCode parse_command(block_result *result);
 
-ErrorCode parse_command_simple_id();
+ErrorCode parse_command_simple_id(block_result *result);
 
-ErrorCode parse_command_simple();
+ErrorCode parse_command_simple(block_result *result);
 
 ErrorCode parse_command_complex();
 

@@ -49,6 +49,7 @@ static size_t main_count = 0;
 
 static char **param_names_buffer = NULL;
 static size_t param_capacity = PARAM_ARRAY_SIZE;
+
 void init_arrays() {
     Type *type_arr = malloc(sizeof(*type_arr) * param_capacity);
     if (type_arr == NULL) {
@@ -100,6 +101,11 @@ void init_parser() {
     main_count = 0;
 }
 
+void clean_symtable() {
+    func_info_reset();
+    symtable_scope_pop(symtable);
+}
+
 static bool same_types(Type type_expect, Type type_current) {
     if (type_expect == type_current) {
         return true;
@@ -109,6 +115,18 @@ static bool same_types(Type type_expect, Type type_current) {
     }
 
     return false;
+}
+
+static block_result init_block_result() {
+    block_result block;
+
+    block.result_type = TYPE_UNIT;
+    block.unit_branch = true;
+    block.is_statement = false;
+    block.returns_always = false;
+    block.last_statement = STAT_NONE;
+
+    return block;
 }
 
 ErrorCode parse_program() {
@@ -163,6 +181,10 @@ ErrorCode parse_prolog() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
 
+    if (strcmp(token.value.str_value.data, "ifj26") != 0) {
+        return ERR_SYNTAX;
+    }
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_DOT);
 
@@ -192,11 +214,6 @@ ErrorCode parse_func_set() {
     }
 
     return ERR_OK;
-}
-
-void clean_symtable() {
-    func_info_reset();
-    symtable_scope_pop(symtable);
 }
 
 ErrorCode parse_func() {
@@ -237,7 +254,7 @@ ErrorCode parse_func() {
         }
     }
 
-    // CHECK_TOKEN with clean
+    // CHECK_TOKEN with clean memory
     if (token.type == TOKEN_LEFTPAR) {
         err = parse_param_set();
         if (err != ERR_OK) {
@@ -334,7 +351,6 @@ ErrorCode parse_main_anot_eol() {
 ErrorCode parse_param_set() {
     GET_TOKEN();
     if (token.type == TOKEN_RIGHTPAR) {
-        func_info.param_count = 0;
         return ERR_OK;
     } // Curr. TOKEN == TOKEN_RIGHTPAR
 
@@ -444,9 +460,15 @@ ErrorCode parse_param_next() {
     }
     CHECK_TOKEN(TOKEN_COMMA);
 
+    int comma_line = token.line;
+
     GET_TOKEN();
-    if (token.type == TOKEN_EOL) {
-        GET_TOKEN();
+
+    if (token.type == TOKEN_RIGHTPAR) {
+        if (token.line > comma_line) {
+            return ERR_OK;
+        }
+        return ERR_SYNTAX;
     }
 
     ErrorCode err = parse_param();
@@ -577,7 +599,9 @@ ErrorCode parse_command_set() {
     return ERR_OK;
 }
 
-ErrorCode parse_command() {
+ErrorCode parse_command(block_result *result) {
+    *result = init_block_result();
+
     if (token.type == TOKEN_EOL) {
         return ERR_OK;
     }
@@ -589,7 +613,7 @@ ErrorCode parse_command() {
         return err;
     }
 
-    err = parse_command_simple();
+    err = parse_command_simple(result);
     if (err != ERR_OK) {
         return err;
     }
@@ -601,9 +625,13 @@ ErrorCode parse_command() {
     return ERR_OK;
 }
 
-ErrorCode parse_command_simple() {
+ErrorCode parse_command_simple(block_result *result) {
     ErrorCode err;
     Type expression_type = TYPE_UNKNOWN;
+
+    *result = init_block_result();
+    result->is_statement = true;
+    result->last_statement = STAT_OTHER;
 
     switch (token.type) {
     case TOKEN_KEYWORD_VAR:
@@ -611,6 +639,10 @@ ErrorCode parse_command_simple() {
         if (err != ERR_OK) {
             return err;
         }
+
+        result->result_type = TYPE_UNIT;
+        result->last_statement = STAT_OTHER;
+
         break;
 
     case TOKEN_KEYWORD_VAL:
@@ -618,6 +650,10 @@ ErrorCode parse_command_simple() {
         if (err != ERR_OK) {
             return err;
         }
+
+        result->result_type = TYPE_UNIT;
+        result->last_statement = STAT_OTHER;
+
         break;
 
     case TOKEN_KEYWORD_RETURN:
@@ -634,6 +670,8 @@ ErrorCode parse_command_simple() {
                 return ERR_SEM_TYPES;
             }
 
+            result->last_statement = STAT_RETURN;
+            result->returns_always = true;
             unparsed_token = true;
             break;
         }
@@ -653,6 +691,8 @@ ErrorCode parse_command_simple() {
             return ERR_SEM_TYPES;
         }
 
+        result->last_statement = STAT_RETURN;
+        result->returns_always = true;
         break;
 
     case TOKEN_IDENTIFIER:
@@ -668,7 +708,7 @@ ErrorCode parse_command_simple() {
             return err;
         }
 
-        err = parse_command_simple_id();
+        err = parse_command_simple_id(result);
         if (err != ERR_OK) {
             free(var_name);
             var_name = NULL;
@@ -689,7 +729,11 @@ ErrorCode parse_command_simple() {
         if (err != ERR_OK) {
             return err;
         }
+
+        result->result_type = expression_type;
+        result->last_statement = STAT_EXPRESSION;
         unparsed_token = true;
+
         break;
     default:
         return ERR_SYNTAX;
@@ -702,8 +746,7 @@ ErrorCode parse_command_simple() {
     return ERR_OK;
 }
 
-// TODO - ID () - funcCall (parse_expression can't do this)
-ErrorCode parse_command_simple_id() {
+ErrorCode parse_command_simple_id(block_result *result) {
     ErrorCode err;
     Type expression_type = TYPE_UNKNOWN;
 
@@ -732,6 +775,8 @@ ErrorCode parse_command_simple_id() {
                 return ERR_SEM_TYPES;
             }
 
+            result->result_type = TYPE_UNIT;
+            result->last_statement = STAT_OTHER;
             return ERR_OK;
         }
 
@@ -746,28 +791,8 @@ ErrorCode parse_command_simple_id() {
 
     unparsed_token = true;
 
-    return ERR_OK;
-}
-
-ErrorCode parse_term() {
-    switch (token.type) {
-    case TOKEN_IDENTIFIER:
-        break;
-    case TOKEN_LIT_INT:
-        break;
-    case TOKEN_LIT_DOUBLE:
-        break;
-    case TOKEN_LIT_STRING:
-        break;
-    case TOKEN_LIT_UNIT:
-        break;
-    case TOKEN_KEYWORD_TRUE:
-        break;
-    case TOKEN_KEYWORD_FALSE:
-        break;
-    default:
-        return ERR_SYNTAX;
-    }
+    result->result_type = expression_type;
+    result->last_statement = STAT_EXPRESSION;
     return ERR_OK;
 }
 
@@ -998,7 +1023,6 @@ ErrorCode parse_command_complex() {
     return ERR_SYNTAX;
 }
 
-/* TODO - parse_expression() and else block maybe done*/
 ErrorCode parse_if_statement() {
     ErrorCode err;
     Type condition_type = TYPE_UNKNOWN;
