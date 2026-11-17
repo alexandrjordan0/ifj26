@@ -530,9 +530,11 @@ ErrorCode parse_return_type() {
 
 ErrorCode parse_body() {
     ErrorCode err;
+    block_result result = init_block_result();
+
     GET_TOKEN();
     if (token.type == TOKEN_EOL) {
-        err = parse_block();
+        err = parse_block(&result);
         if (err != ERR_OK) {
             return err;
         }
@@ -562,36 +564,60 @@ ErrorCode parse_body() {
     return ERR_OK; // Curr. Token = TOKEN_EOL
 }
 
-ErrorCode parse_block() {
+ErrorCode parse_block(block_result *result) {
+    *result = init_block_result();
+    block_result command_result = init_block_result();
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_INDENT);
 
     GET_TOKEN();
-    ErrorCode err = parse_command();
+    ErrorCode err = parse_command(&command_result);
     if (err != ERR_OK) {
         return err;
     }
 
-    err = parse_command_set();
+    if (command_result.is_statement) {
+        *result = command_result;
+    }
+
+    err = parse_command_set(result);
     if (err != ERR_OK) {
         return err;
+    }
+
+    if (!result->is_statement) {
+        return ERR_SYNTAX;
     }
 
     return ERR_OK; // CURR. TOKEN = TOKEN_DEDENT
 }
 
-ErrorCode parse_command_set() {
+ErrorCode parse_command_set(block_result *result) {
+    block_result command_result = init_block_result();
+
     GET_TOKEN();
     if (token.type == TOKEN_DEDENT) {
         return ERR_OK;
     }
 
-    ErrorCode err = parse_command();
+    ErrorCode err = parse_command(&command_result);
     if (err != ERR_OK) {
         return err;
     }
 
-    err = parse_command_set();
+    if (command_result.is_statement) {
+        bool prev_return = result->returns_always;
+        *result = command_result;
+
+        if (prev_return || result->returns_always) {
+            result->returns_always = true;
+        } else {
+            result->returns_always = false;
+        }
+    }
+
+    err = parse_command_set(result);
     if (err != ERR_OK) {
         return err;
     }
@@ -609,7 +635,7 @@ ErrorCode parse_command(block_result *result) {
     ErrorCode err;
 
     if (token.type == TOKEN_KEYWORD_IF || token.type == TOKEN_KEYWORD_WHILE) {
-        err = parse_command_complex();
+        err = parse_command_complex(result);
         return err;
     }
 
@@ -796,47 +822,6 @@ ErrorCode parse_command_simple_id(block_result *result) {
     return ERR_OK;
 }
 
-ErrorCode parse_arg_set() {
-    GET_TOKEN();
-    if (token.type == TOKEN_RIGHTPAR) {
-        return ERR_OK;
-    }
-
-    ErrorCode err = parse_term();
-    if (err != ERR_OK) {
-        return err;
-    }
-
-    GET_TOKEN();
-    err = parse_arg_next();
-    if (err != ERR_OK) {
-        return err;
-    }
-
-    return ERR_OK;
-}
-
-ErrorCode parse_arg_next() {
-    if (token.type == TOKEN_RIGHTPAR) {
-        return ERR_OK;
-    }
-    CHECK_TOKEN(TOKEN_COMMA);
-
-    GET_TOKEN();
-    ErrorCode err = parse_term();
-    if (err != ERR_OK) {
-        return err;
-    } // Curren. TOKEN == TOKEN_~TERM
-
-    GET_TOKEN();
-    err = parse_arg_next();
-    if (err != ERR_OK) {
-        return err;
-    }
-
-    return ERR_OK;
-}
-
 ErrorCode parse_variable() {
     var_info.is_mutable = true;
 
@@ -990,42 +975,60 @@ ErrorCode parse_separator() {
     return ERR_SYNTAX;
 }
 
-ErrorCode parse_nested_blocks() {
+ErrorCode parse_nested_blocks(block_result *result) {
+    *result = init_block_result();
+
     if (!symtable_scope_push(symtable)) {
         return ERR_INTERNAL;
     }
 
-    ErrorCode err = parse_block();
+    ErrorCode err = parse_block(result);
 
     symtable_scope_pop(symtable);
 
     return err;
 }
 
-ErrorCode parse_command_complex() {
+ErrorCode parse_command_complex(block_result *result) {
     ErrorCode err;
+    *result = init_block_result();
+
     if (token.type == TOKEN_KEYWORD_IF) {
-        err = parse_if_statement();
+        err = parse_if_statement(result);
         if (err != ERR_OK) {
             return err;
         }
+
+        result->last_statement = STAT_IF;
+        result->is_statement = true;
+
         return ERR_OK;
     }
 
     if (token.type == TOKEN_KEYWORD_WHILE) {
-        err = parse_while_statement();
+        err = parse_while_statement(result);
         if (err != ERR_OK) {
             return err;
         }
+
+        result->last_statement = STAT_WHILE;
+        result->result_type = TYPE_UNIT;
+        result->is_statement = true;
+
         return ERR_OK;
     }
 
     return ERR_SYNTAX;
 }
 
-ErrorCode parse_if_statement() {
+ErrorCode parse_if_statement(block_result *result) {
     ErrorCode err;
     Type condition_type = TYPE_UNKNOWN;
+
+    block_result then_result = init_block_result();
+    block_result else_result = init_block_result();
+
+    *result = init_block_result();
 
     GET_TOKEN();
     err = parse_expression(&token, symtable, &condition_type);
@@ -1043,22 +1046,62 @@ ErrorCode parse_if_statement() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    err = parse_nested_blocks();
+    err = parse_nested_blocks(&then_result);
     if (err != ERR_OK) {
         return err;
     } // Curr. TOKEN == TOKEN_DEDENT
 
     GET_TOKEN();
-    err = parse_vol_else_block();
+    err = parse_vol_else_block(&else_result);
     if (err != ERR_OK) {
         return err;
     } // Curr. TOKEN == TOKEN_DEDENT
 
+    if (then_result.returns_always && else_result.returns_always) {
+        result->returns_always = true;
+    } else {
+        result->returns_always = false;
+    }
+
+    bool unit_then;
+    if (then_result.last_statement == STAT_IF) {
+        unit_then = then_result.unit_branch;
+    } else {
+        if (then_result.result_type == TYPE_UNIT) {
+            unit_then = true;
+        } else {
+            unit_then = false;
+        }
+    }
+
+    bool unit_else;
+    if (else_result.last_statement == STAT_IF) {
+        unit_else = else_result.unit_branch;
+    } else {
+        if (else_result.result_type == TYPE_UNIT) {
+            unit_else = true;
+        } else {
+            unit_else = false;
+        }
+    }
+
+    if (unit_else && unit_then) {
+        result->unit_branch = true;
+    } else {
+        result->unit_branch = false;
+    }
+
+    result->result_type = TYPE_UNIT;
+    result->last_statement = STAT_IF;
+    result->is_statement = true;
+
     return ERR_OK; // Curr. TOKEN == TOKEN_DEDENT
 }
 
-ErrorCode parse_vol_else_block() {
+ErrorCode parse_vol_else_block(block_result *result) {
     ErrorCode err;
+    *result = init_block_result();
+
     if (token.type != TOKEN_KEYWORD_ELSE) {
         unparsed_token = true;
         return ERR_OK;
@@ -1068,7 +1111,7 @@ ErrorCode parse_vol_else_block() {
 
     // Just ELSE / EOL - branch
     if (token.type == TOKEN_EOL) {
-        err = parse_nested_blocks();
+        err = parse_nested_blocks(result);
         if (err != ERR_OK) {
             return err;
         }
@@ -1076,7 +1119,7 @@ ErrorCode parse_vol_else_block() {
     }
     // ELSE IF / IF - branch
     if (token.type == TOKEN_KEYWORD_IF) {
-        err = parse_if_statement();
+        err = parse_if_statement(result);
         if (err != ERR_OK) {
             return err;
         }
@@ -1086,9 +1129,10 @@ ErrorCode parse_vol_else_block() {
     return ERR_SYNTAX; // Curr. TOKEN == TOKEN_DEDENT
 }
 
-ErrorCode parse_while_statement() {
+ErrorCode parse_while_statement(block_result *result) {
     ErrorCode err;
     Type condition_type = TYPE_UNKNOWN;
+    *result = init_block_result();
 
     GET_TOKEN();
     err = parse_expression(&token, symtable, &condition_type);
@@ -1106,7 +1150,7 @@ ErrorCode parse_while_statement() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    err = parse_nested_blocks();
+    err = parse_nested_blocks(result);
     if (err != ERR_OK) {
         return err;
     }

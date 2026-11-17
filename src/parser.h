@@ -63,9 +63,9 @@ ErrorCode parse_value();
 
 ErrorCode parse_value_type();
 
-ErrorCode parse_block();
+ErrorCode parse_block(block_result *result);
 
-ErrorCode parse_command_set();
+ErrorCode parse_command_set(block_result *result);
 
 ErrorCode parse_command(block_result *result);
 
@@ -73,21 +73,15 @@ ErrorCode parse_command_simple_id(block_result *result);
 
 ErrorCode parse_command_simple(block_result *result);
 
-ErrorCode parse_command_complex();
+ErrorCode parse_command_complex(block_result *result);
 
-ErrorCode parse_arg_set();
+ErrorCode parse_if_statement(block_result *result);
 
-ErrorCode parse_arg_next();
-
-ErrorCode parse_term();
-
-ErrorCode parse_if_statement();
-
-ErrorCode parse_vol_else_block();
+ErrorCode parse_vol_else_block(block_result *result);
 
 ErrorCode parse_else_block();
 
-ErrorCode parse_while_statement();
+ErrorCode parse_while_statement(block_result *result);
 
 ErrorCode parse_separator();
 
