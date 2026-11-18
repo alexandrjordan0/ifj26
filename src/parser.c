@@ -538,6 +538,36 @@ ErrorCode parse_body() {
         if (err != ERR_OK) {
             return err;
         }
+
+        // RETURN
+        if (result.returns_always) {
+            if (func_info.return_type == TYPE_UNKNOWN) {
+                return ERR_SEM_TYPES;
+            }
+
+            return ERR_OK;
+        }
+
+        // IF stat
+        if (result.last_statement == STAT_IF) {
+            if (func_info.return_type == TYPE_UNIT) {
+                return ERR_OK;
+            }
+
+            if (func_info.return_type == TYPE_UNKNOWN && result.unit_branch) {
+                func_info.return_type = TYPE_UNIT;
+                return ERR_OK;
+            }
+
+            return ERR_SEM_TYPES;
+        }
+
+        if (func_info.return_type == TYPE_UNKNOWN) {
+            func_info.return_type = result.result_type;
+        } else if (func_info.return_type != TYPE_UNIT &&
+                   !same_types(func_info.return_type, result.result_type)) {
+            return ERR_SEM_TYPES;
+        }
     } else {
         Type decared_type = func_info.return_type;
         Type expression_type = TYPE_UNKNOWN;
@@ -1132,7 +1162,7 @@ ErrorCode parse_vol_else_block(block_result *result) {
 ErrorCode parse_while_statement(block_result *result) {
     ErrorCode err;
     Type condition_type = TYPE_UNKNOWN;
-    *result = init_block_result();
+    block_result while_result = init_block_result();
 
     GET_TOKEN();
     err = parse_expression(&token, symtable, &condition_type);
@@ -1150,10 +1180,16 @@ ErrorCode parse_while_statement(block_result *result) {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
-    err = parse_nested_blocks(result);
+    err = parse_nested_blocks(&while_result);
     if (err != ERR_OK) {
         return err;
     }
+
+    result->returns_always = false;
+    result->result_type = TYPE_UNIT;
+    result->unit_branch = true;
+    result->last_statement = STAT_WHILE;
+    result->is_statement = true;
 
     return ERR_OK;
 }
