@@ -1,0 +1,719 @@
+/**
+ * File: codegenerator.c
+ * Project: IFJ26
+ * Authors: Alexandr Jordán (xjordaa00)
+ * Translator: gcc 16.2.1
+ */
+
+#include "codegenerator.h"
+#include "error.h"
+#include "str.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+// buffer with finished user functions
+static string_t code;
+
+// body of currently generated function, appended to code in gen_func_end
+static string_t body;
+
+// DEFVARs of currently generated function, emitted once at start of function
+static string_t defvars;
+
+// buffer where emit currently writes
+static string_t *current_buffer = &code;
+
+// true between gen_func_start and gen_func_end
+static bool in_function = false;
+
+// counter for unique label ids
+static int label_counter = 0;
+
+// remembered from gen_func_start for gen_func_end
+static bool cur_func_returns_unit = false;
+
+// true when last generated statement was expression, its value is in GF@$last
+// block ending with definition, assignment, if or while has result ()
+static bool last_stmt_is_expr = false;
+
+// names of builtin functions, labels are prefixed with $
+static const char *const builtin_names[] = {
+    "print", "readLine",  "readInt", "readDouble", "readBoolean", "toStr",
+    "toInt", "strLength", "subStr",  "ord",        "chr",
+};
+
+static void append_raw(const char *s) {
+    if (s == NULL) {
+        error_exit(ERR_INTERNAL, "append_raw: NULL string");
+    }
+
+    if (!str_append_str(current_buffer, s)) {
+        error_exit(ERR_INTERNAL, "append_raw: allocation failed");
+    }
+}
+
+static void emit(const char *fmt, ...) {
+    if (fmt == NULL) {
+        error_exit(ERR_INTERNAL, "emit: NULL format");
+    }
+
+    va_list args;
+    va_start(args, fmt);
+    va_list args_copy;
+    va_copy(args_copy, args);
+
+    // first pass only computes length of formatted line
+    int length = vsnprintf(NULL, 0, fmt, args);
+    va_end(args);
+    if (length < 0) {
+        va_end(args_copy);
+        error_exit(ERR_INTERNAL, "emit: formatting failed");
+    }
+
+    char *line = malloc((size_t)length + 1);
+    if (line == NULL) {
+        va_end(args_copy);
+        error_exit(ERR_INTERNAL, "emit: allocation failed");
+    }
+
+    vsnprintf(line, (size_t)length + 1, fmt, args_copy);
+    va_end(args_copy);
+
+    bool is_ok = str_append_str(current_buffer, line) && str_append_char(current_buffer, '\n');
+    free(line);
+    if (!is_ok) {
+        error_exit(ERR_INTERNAL, "emit: allocation failed");
+    }
+}
+
+static void emit_string_const(const char *s) {
+    if (s == NULL) {
+        error_exit(ERR_INTERNAL, "emit_string_const: NULL string");
+    }
+
+    if (!str_append_str(current_buffer, "string@")) {
+        error_exit(ERR_INTERNAL, "emit_string_const: allocation failed");
+    }
+
+    for (const char *current = s; *current != '\0'; current++) {
+        unsigned char character = (unsigned char)*current;
+        bool is_appended;
+
+        // whitespace, control chars, '#', '\' and non-ASCII must be written as \xyz
+        if (character <= 32 || character == '#' || character == '\\' || character >= 127) {
+            char escape[5];
+            snprintf(escape, sizeof(escape), "\\%03u", (unsigned)character);
+            is_appended = str_append_str(current_buffer, escape);
+        } else {
+            is_appended = str_append_char(current_buffer, (char)character);
+        }
+
+        if (!is_appended) {
+            error_exit(ERR_INTERNAL, "emit_string_const: allocation failed");
+        }
+    }
+}
+
+static bool is_builtin(const char *name) {
+    if (name == NULL) {
+        return false;
+    }
+
+    for (size_t i = 0; i < sizeof(builtin_names) / sizeof(builtin_names[0]); i++) {
+        if (strcmp(name, builtin_names[i]) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// builtin functions, arguments are on data stack
+// return value is left on data stack
+static const char *const builtins_code[] = {
+    // print(value: Any): Unit
+    "LABEL $print\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "POPS LF@value\n"
+    "DEFVAR LF@type\n"
+    "TYPE LF@type LF@value\n"
+    "JUMPIFEQ $print$unit LF@type string@nil\n"
+    "WRITE LF@value\n"
+    "JUMP $print$end\n"
+    "LABEL $print$unit\n"
+    "WRITE string@()\n"
+    "LABEL $print$end\n"
+    "PUSHS nil@nil\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // readLine(): String
+    "LABEL $readLine\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "READ LF@value string\n"
+    "JUMPIFNEQ $readLine$end LF@value nil@nil\n"
+    "MOVE LF@value string@\n"
+    "LABEL $readLine$end\n"
+    "PUSHS LF@value\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // readInt(): Int
+    "LABEL $readInt\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "READ LF@value int\n"
+    "JUMPIFEQ $readInt$invalid LF@value nil@nil\n"
+    // Int is 32-bit, value out of range is invalid input
+    "DEFVAR LF@cond\n"
+    "LT LF@cond LF@value int@-2147483648\n"
+    "JUMPIFEQ $readInt$invalid LF@cond bool@true\n"
+    "GT LF@cond LF@value int@2147483647\n"
+    "JUMPIFEQ $readInt$end LF@cond bool@false\n"
+    "LABEL $readInt$invalid\n"
+    "MOVE LF@value int@0\n"
+    "LABEL $readInt$end\n"
+    "PUSHS LF@value\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // readDouble(): Double
+    "LABEL $readDouble\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "READ LF@value float\n"
+    "JUMPIFNEQ $readDouble$end LF@value nil@nil\n"
+    "MOVE LF@value float@0x0p+0\n"
+    "LABEL $readDouble$end\n"
+    "PUSHS LF@value\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // readBoolean(): Boolean
+    "LABEL $readBoolean\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "READ LF@value bool\n"
+    "JUMPIFNEQ $readBoolean$end LF@value nil@nil\n"
+    "MOVE LF@value bool@false\n"
+    "LABEL $readBoolean$end\n"
+    "PUSHS LF@value\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // toStr(value: Any): String
+    "LABEL $toStr\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "POPS LF@value\n"
+    "DEFVAR LF@type\n"
+    "TYPE LF@type LF@value\n"
+    "JUMPIFEQ $toStr$int LF@type string@int\n"
+    "JUMPIFEQ $toStr$float LF@type string@float\n"
+    "JUMPIFEQ $toStr$bool LF@type string@bool\n"
+    "JUMPIFEQ $toStr$unit LF@type string@nil\n"
+    "JUMP $toStr$end\n"
+    "LABEL $toStr$int\n"
+    "INT2STR LF@value LF@value\n"
+    "JUMP $toStr$end\n"
+    "LABEL $toStr$float\n"
+    "FLOAT2STR LF@value LF@value\n"
+    "JUMP $toStr$end\n"
+    "LABEL $toStr$bool\n"
+    "JUMPIFEQ $toStr$true LF@value bool@true\n"
+    "MOVE LF@value string@false\n"
+    "JUMP $toStr$end\n"
+    "LABEL $toStr$true\n"
+    "MOVE LF@value string@true\n"
+    "JUMP $toStr$end\n"
+    "LABEL $toStr$unit\n"
+    "MOVE LF@value string@()\n"
+    "LABEL $toStr$end\n"
+    "PUSHS LF@value\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // toInt(value: Double): Int, saturates to Int range like Scala
+    "LABEL $toInt\n"
+    "POPS GF@$tmp1\n"
+    // NaN is not equal to itself and converts to 0
+    "EQ GF@$tmp2 GF@$tmp1 GF@$tmp1\n"
+    "JUMPIFEQ $toInt$nan GF@$tmp2 bool@false\n"
+    "LT GF@$tmp2 GF@$tmp1 float@0x1.fffffffcp+30\n"
+    "JUMPIFEQ $toInt$max GF@$tmp2 bool@false\n"
+    "GT GF@$tmp2 GF@$tmp1 float@-0x1p+31\n"
+    "JUMPIFEQ $toInt$min GF@$tmp2 bool@false\n"
+    "FLOAT2INT GF@$tmp1 GF@$tmp1\n"
+    "PUSHS GF@$tmp1\n"
+    "RETURN\n"
+    "LABEL $toInt$max\n"
+    "PUSHS int@2147483647\n"
+    "RETURN\n"
+    "LABEL $toInt$min\n"
+    "PUSHS int@-2147483648\n"
+    "RETURN\n"
+    "LABEL $toInt$nan\n"
+    "PUSHS int@0\n"
+    "RETURN\n",
+
+    // wraps int on top of stack to 32-bit range (Int overflow semantics of Scala)
+    "LABEL $wrap32\n"
+    "POPS GF@$tmp1\n"
+    "LT GF@$tmp2 GF@$tmp1 int@-2147483648\n"
+    "JUMPIFEQ $wrap32$do GF@$tmp2 bool@true\n"
+    "GT GF@$tmp2 GF@$tmp1 int@2147483647\n"
+    "JUMPIFEQ $wrap32$do GF@$tmp2 bool@true\n"
+    "PUSHS GF@$tmp1\n"
+    "RETURN\n"
+    "LABEL $wrap32$do\n"
+    // ((x + 2^31) mod 2^32) - 2^31, IDIV truncates so negative remainder is corrected
+    "ADD GF@$tmp1 GF@$tmp1 int@2147483648\n"
+    "IDIV GF@$tmp2 GF@$tmp1 int@4294967296\n"
+    "MUL GF@$tmp2 GF@$tmp2 int@4294967296\n"
+    "SUB GF@$tmp1 GF@$tmp1 GF@$tmp2\n"
+    "LT GF@$tmp2 GF@$tmp1 int@0\n"
+    "JUMPIFEQ $wrap32$positive GF@$tmp2 bool@false\n"
+    "ADD GF@$tmp1 GF@$tmp1 int@4294967296\n"
+    "LABEL $wrap32$positive\n"
+    "SUB GF@$tmp1 GF@$tmp1 int@2147483648\n"
+    "PUSHS GF@$tmp1\n"
+    "RETURN\n",
+
+    // strLength(value: String): Int
+    "LABEL $strLength\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@value\n"
+    "POPS LF@value\n"
+    "DEFVAR LF@len\n"
+    "STRLEN LF@len LF@value\n"
+    "PUSHS LF@len\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // subStr(value: String, start: Int, end: Int): String
+    "LABEL $subStr\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@end\n"
+    "POPS LF@end\n"
+    "DEFVAR LF@start\n"
+    "POPS LF@start\n"
+    "DEFVAR LF@value\n"
+    "POPS LF@value\n"
+    "DEFVAR LF@len\n"
+    "STRLEN LF@len LF@value\n"
+    "DEFVAR LF@cond\n"
+    "LT LF@cond LF@start int@0\n"
+    "JUMPIFEQ $subStr$error LF@cond bool@true\n"
+    "LT LF@cond LF@end int@0\n"
+    "JUMPIFEQ $subStr$error LF@cond bool@true\n"
+    "GT LF@cond LF@start LF@end\n"
+    "JUMPIFEQ $subStr$error LF@cond bool@true\n"
+    "LT LF@cond LF@start LF@len\n"
+    "JUMPIFEQ $subStr$error LF@cond bool@false\n"
+    "GT LF@cond LF@end LF@len\n"
+    "JUMPIFEQ $subStr$error LF@cond bool@true\n"
+    "DEFVAR LF@result\n"
+    "MOVE LF@result string@\n"
+    "DEFVAR LF@char\n"
+    "LABEL $subStr$loop\n"
+    "JUMPIFEQ $subStr$end LF@start LF@end\n"
+    "GETCHAR LF@char LF@value LF@start\n"
+    "CONCAT LF@result LF@result LF@char\n"
+    "ADD LF@start LF@start int@1\n"
+    "JUMP $subStr$loop\n"
+    "LABEL $subStr$error\n"
+    "EXIT int@40\n"
+    "LABEL $subStr$end\n"
+    "PUSHS LF@result\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // ord(value: String, index: Int): Int
+    "LABEL $ord\n"
+    "CREATEFRAME\n"
+    "PUSHFRAME\n"
+    "DEFVAR LF@index\n"
+    "POPS LF@index\n"
+    "DEFVAR LF@value\n"
+    "POPS LF@value\n"
+    "DEFVAR LF@len\n"
+    "STRLEN LF@len LF@value\n"
+    "DEFVAR LF@cond\n"
+    "LT LF@cond LF@index int@0\n"
+    "JUMPIFEQ $ord$invalid LF@cond bool@true\n"
+    "LT LF@cond LF@index LF@len\n"
+    "JUMPIFEQ $ord$invalid LF@cond bool@false\n"
+    "DEFVAR LF@result\n"
+    "STRI2INT LF@result LF@value LF@index\n"
+    "PUSHS LF@result\n"
+    "JUMP $ord$end\n"
+    "LABEL $ord$invalid\n"
+    "PUSHS int@-1\n"
+    "LABEL $ord$end\n"
+    "POPFRAME\n"
+    "RETURN\n",
+
+    // chr(code: Int): String
+    "LABEL $chr\n"
+    "INT2CHARS\n"
+    "RETURN\n",
+};
+
+static void gen_builtins(void) {
+    for (size_t i = 0; i < sizeof(builtins_code) / sizeof(builtins_code[0]); i++) {
+        fputs(builtins_code[i], stdout);
+    }
+}
+
+void gen_init(void) {
+    if (!str_init(&code) || !str_init(&body) || !str_init(&defvars)) {
+        error_exit(ERR_INTERNAL, "gen_init: allocation failed");
+    }
+    current_buffer = &code;
+    in_function = false;
+    label_counter = 0;
+    cur_func_returns_unit = false;
+    last_stmt_is_expr = false;
+}
+
+void gen_finish(const char *main_name) {
+    if (main_name == NULL) {
+        error_exit(ERR_INTERNAL, "gen_finish: NULL main name");
+    }
+
+    printf(".IFJcode26\n");
+    printf("DEFVAR GF@$tmp1\n");
+    printf("DEFVAR GF@$tmp2\n");
+    printf("DEFVAR GF@$last\n");
+    printf("CALL %s\n", main_name);
+    printf("EXIT int@0\n");
+
+    if (code.data != NULL) {
+        fputs(code.data, stdout);
+    }
+    gen_builtins();
+}
+
+void gen_free(void) {
+    str_free(&code);
+    str_free(&body);
+    str_free(&defvars);
+    current_buffer = &code;
+    in_function = false;
+}
+
+int gen_new_label_id(void) { return label_counter++; }
+
+void gen_push_literal(const Token *token) {
+    if (token == NULL) {
+        error_exit(ERR_INTERNAL, "gen_push_literal: NULL token");
+    }
+
+    switch (token->type) {
+    case TOKEN_LIT_INT:
+        emit("PUSHS int@%lld", token->value.int_value);
+        break;
+    case TOKEN_LIT_DOUBLE:
+        emit("PUSHS float@%a", token->value.double_value);
+        break;
+    case TOKEN_LIT_STRING:
+        append_raw("PUSHS ");
+        emit_string_const(token->value.str_value.data != NULL ? token->value.str_value.data : "");
+        append_raw("\n");
+        break;
+    case TOKEN_LIT_UNIT:
+        gen_push_unit();
+        break;
+    case TOKEN_KEYWORD_TRUE:
+        emit("PUSHS bool@true");
+        break;
+    case TOKEN_KEYWORD_FALSE:
+        emit("PUSHS bool@false");
+        break;
+    default:
+        error_exit(ERR_INTERNAL, "gen_push_literal: token is not literal");
+    }
+}
+
+void gen_push_var(const char *name, int scope_depth) {
+    if (name == NULL) {
+        error_exit(ERR_INTERNAL, "gen_push_var: NULL name");
+    }
+    emit("PUSHS LF@%s$%d", name, scope_depth);
+}
+
+void gen_push_unit(void) { emit("PUSHS nil@nil"); }
+
+// Int result is computed in 64-bit int of IFJcode26, wraps it to 32-bit
+static void emit_int_wrap(Type operand_type) {
+    if (operand_type == TYPE_INT) {
+        emit("CALL $wrap32");
+    }
+}
+
+void gen_expr_op(PrecSymbol op, Type operand_type) {
+    switch (op) {
+    case PREC_SYM_PLUS:
+        if (operand_type == TYPE_STRING) {
+            // there is no CONCATS instruction
+            emit("POPS GF@$tmp2");
+            emit("POPS GF@$tmp1");
+            emit("CONCAT GF@$tmp1 GF@$tmp1 GF@$tmp2");
+            emit("PUSHS GF@$tmp1");
+        } else {
+            emit("ADDS");
+            emit_int_wrap(operand_type);
+        }
+        break;
+    case PREC_SYM_MINUS:
+        emit("SUBS");
+        emit_int_wrap(operand_type);
+        break;
+    case PREC_SYM_MUL:
+        emit("MULS");
+        emit_int_wrap(operand_type);
+        break;
+    case PREC_SYM_DIV:
+        if (operand_type == TYPE_INT) {
+            // Int.MinValue / -1 overflows
+            emit("IDIVS");
+            emit_int_wrap(operand_type);
+        } else {
+            emit("DIVS");
+        }
+        break;
+    case PREC_SYM_EQ:
+        emit("EQS");
+        break;
+    case PREC_SYM_NEQ:
+        emit("EQS");
+        emit("NOTS");
+        break;
+    case PREC_SYM_LT:
+        emit("LTS");
+        break;
+    case PREC_SYM_GT:
+        emit("GTS");
+        break;
+    case PREC_SYM_LTE:
+        emit("GTS");
+        emit("NOTS");
+        break;
+    case PREC_SYM_GTE:
+        emit("LTS");
+        emit("NOTS");
+        break;
+    case PREC_SYM_NOT:
+        emit("NOTS");
+        break;
+    case PREC_SYM_UMINUS:
+        // multiplication by -1 keeps sign of -0.0 correct, there is no NEG instruction
+        if (operand_type == TYPE_INT) {
+            emit("PUSHS int@-1");
+        } else {
+            emit("PUSHS float@%a", -1.0);
+        }
+        emit("MULS");
+        emit_int_wrap(operand_type);
+        break;
+    case PREC_SYM_AND:
+    case PREC_SYM_OR:
+        // short-circuit evaluation is generated by gen_logic_start and gen_logic_end
+        break;
+    default:
+        error_exit(ERR_INTERNAL, "gen_expr_op: symbol is not operator");
+    }
+}
+
+void gen_conv_top_int2float(void) { emit("INT2FLOATS"); }
+
+void gen_conv_second_int2float(void) {
+    emit("POPS GF@$tmp1");
+    emit("INT2FLOATS");
+    emit("PUSHS GF@$tmp1");
+}
+
+void gen_logic_start(PrecSymbol op, int label_id) {
+    if (op != PREC_SYM_AND && op != PREC_SYM_OR) {
+        error_exit(ERR_INTERNAL, "gen_logic_start: symbol is not && or ||");
+    }
+
+    // left operand stays on stack as result when right operand is skipped
+    emit("POPS GF@$tmp1");
+    emit("PUSHS GF@$tmp1");
+    emit("JUMPIFEQ $logic$%d GF@$tmp1 bool@%s", label_id, op == PREC_SYM_AND ? "false" : "true");
+    // left operand is dropped, result is right operand
+    emit("POPS GF@$tmp1");
+}
+
+void gen_logic_end(PrecSymbol op, int label_id) {
+    if (op != PREC_SYM_AND && op != PREC_SYM_OR) {
+        error_exit(ERR_INTERNAL, "gen_logic_end: symbol is not && or ||");
+    }
+    emit("LABEL $logic$%d", label_id);
+}
+
+void gen_defvar(const char *name, int scope_depth) {
+    if (name == NULL) {
+        error_exit(ERR_INTERNAL, "gen_defvar: NULL name");
+    }
+
+    int length = snprintf(NULL, 0, "DEFVAR LF@%s$%d\n", name, scope_depth);
+    if (length < 0) {
+        error_exit(ERR_INTERNAL, "gen_defvar: formatting failed");
+    }
+
+    char *line = malloc((size_t)length + 1);
+    if (line == NULL) {
+        error_exit(ERR_INTERNAL, "gen_defvar: allocation failed");
+    }
+    snprintf(line, (size_t)length + 1, "DEFVAR LF@%s$%d\n", name, scope_depth);
+
+    if (!in_function) {
+        bool is_appended = str_append_str(current_buffer, line);
+        free(line);
+        if (!is_appended) {
+            error_exit(ERR_INTERNAL, "gen_defvar: allocation failed");
+        }
+        return;
+    }
+
+    // variable defined in loop or in both if branches is declared only once per function
+    bool is_defined = defvars.data != NULL && strstr(defvars.data, line) != NULL;
+    bool is_appended = is_defined || str_append_str(&defvars, line);
+    free(line);
+    if (!is_appended) {
+        error_exit(ERR_INTERNAL, "gen_defvar: allocation failed");
+    }
+}
+
+void gen_assign(const char *name, int scope_depth) {
+    if (name == NULL) {
+        error_exit(ERR_INTERNAL, "gen_assign: NULL name");
+    }
+    emit("POPS LF@%s$%d", name, scope_depth);
+    last_stmt_is_expr = false;
+}
+
+void gen_discard_top(void) {
+    emit("POPS GF@$last");
+    last_stmt_is_expr = true;
+}
+
+void gen_func_start(const char *name, size_t param_count, const char *const *param_names,
+                    int scope_depth, bool returns_unit) {
+    if (name == NULL || (param_count > 0 && param_names == NULL)) {
+        error_exit(ERR_INTERNAL, "gen_func_start: NULL argument");
+    }
+
+    current_buffer = &code;
+    append_raw("\n");
+    emit("# function %s", name);
+    emit("LABEL %s", name);
+    emit("CREATEFRAME");
+    emit("PUSHFRAME");
+
+    for (size_t i = 0; i < param_count; i++) {
+        if (param_names[i] == NULL) {
+            error_exit(ERR_INTERNAL, "gen_func_start: NULL parameter name");
+        }
+        emit("DEFVAR LF@%s$%d", param_names[i], scope_depth);
+    }
+
+    // last argument is on top of stack
+    for (size_t i = param_count; i > 0; i--) {
+        emit("POPS LF@%s$%d", param_names[i - 1], scope_depth);
+    }
+
+    str_clear(&body);
+    str_clear(&defvars);
+    current_buffer = &body;
+    in_function = true;
+    cur_func_returns_unit = returns_unit;
+    last_stmt_is_expr = false;
+}
+
+void gen_func_end(void) {
+    // inferred Unit is not known in gen_func_start, last statement decides
+    if (cur_func_returns_unit || !last_stmt_is_expr) {
+        emit("PUSHS nil@nil");
+    } else {
+        emit("PUSHS GF@$last");
+    }
+    emit("POPFRAME");
+    emit("RETURN");
+
+    // DEFVARs go before body so they are executed exactly once
+    current_buffer = &code;
+    if (defvars.data != NULL) {
+        append_raw(defvars.data);
+    }
+    if (body.data != NULL) {
+        append_raw(body.data);
+    }
+
+    str_clear(&body);
+    str_clear(&defvars);
+    in_function = false;
+}
+
+void gen_return(void) {
+    if (cur_func_returns_unit) {
+        emit("POPS GF@$tmp1");
+        emit("PUSHS nil@nil");
+    }
+    emit("POPFRAME");
+    emit("RETURN");
+    last_stmt_is_expr = false;
+}
+
+void gen_call(const char *name) {
+    if (name == NULL) {
+        error_exit(ERR_INTERNAL, "gen_call: NULL name");
+    }
+
+    if (is_builtin(name)) {
+        emit("CALL $%s", name);
+    } else {
+        emit("CALL %s", name);
+    }
+}
+
+void gen_if_start(int label_id) {
+    emit("PUSHS bool@false");
+    emit("JUMPIFEQS $else$%d", label_id);
+}
+
+void gen_if_else(int label_id) {
+    emit("JUMP $endif$%d", label_id);
+    emit("LABEL $else$%d", label_id);
+}
+
+void gen_if_end(int label_id) {
+    emit("LABEL $endif$%d", label_id);
+    last_stmt_is_expr = false;
+}
+
+void gen_while_header(int label_id) { emit("LABEL $while$%d", label_id); }
+
+void gen_while_cond(int label_id) {
+    emit("PUSHS bool@false");
+    emit("JUMPIFEQS $endwhile$%d", label_id);
+}
+
+void gen_while_end(int label_id) {
+    emit("JUMP $while$%d", label_id);
+    emit("LABEL $endwhile$%d", label_id);
+    last_stmt_is_expr = false;
+}
