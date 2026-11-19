@@ -11,6 +11,7 @@
 #include "scanner.h"
 #include "symtable.h"
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -165,6 +166,8 @@ ErrorCode parse_program() {
     if (main_count == 0) {
         symtable_free(symtable);
         free_arrays();
+        // Test-2012
+        printf("No @main\n");
         return ERR_SEM_UNDEF;
     }
 
@@ -305,7 +308,9 @@ ErrorCode parse_func() {
     FuncInfo *found_func = symtable_find_func(symtable, func_info.name);
     if (found_func == NULL) {
         clean_symtable();
-        return ERR_INTERNAL;
+        // Test - 2012
+        printf("No func found\n");
+        return ERR_SEM_UNDEF;
     }
 
     // return_type form function body
@@ -321,14 +326,13 @@ ErrorCode parse_main_anot() {
         return ERR_OK;
     }
     CHECK_TOKEN(TOKEN_MAIN);
+    is_main_func = true;
+    main_count = main_count + 1;
 
     ErrorCode err = parse_main_anot_eol();
     if (err != ERR_OK) {
         return err;
     }
-
-    is_main_func = true;
-    main_count++;
 
     return ERR_OK; // Current token = TOKEN_KEYWORD_DEF
 }
@@ -811,7 +815,9 @@ ErrorCode parse_command_simple_id(block_result *result) {
 
         VarInfo *found_var = symtable_find_var(symtable, var_name);
         if (found_var == NULL) {
-            return ERR_SEM_ASSIGN;
+            // Test - 2012
+            printf("No variable or val found\n");
+            return ERR_SEM_UNDEF;
         }
 
         if (found_var->is_mutable) {
