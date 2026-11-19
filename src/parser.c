@@ -273,12 +273,37 @@ ErrorCode skip_func_body() {
             return ERR_SYNTAX;
         }
 
-        while (token.type != EOL && token.type != EOF) {
+        while (token.type != TOKEN_EOL && token.type != EOF) {
             GET_TOKEN();
         }
 
         return ERR_OK;
     }
+}
+
+ErrorCode parse_func_set_heads() {
+    if (token.type == TOKEN_EOF) {
+        return ERR_OK;
+    }
+
+    ErrorCode err = parse_func_heads();
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    err = skip_func_body();
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    GET_TOKEN();
+
+    err = parse_func_set_heads();
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    return ERR_OK;
 }
 
 ErrorCode parse_program() {
@@ -437,15 +462,6 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_ASSIGN
 
-    ErrorCode sym_err =
-        symtable_add_func(symtable, func_info.name, func_info.param_count, func_info.param_types,
-                          func_info.param_names, func_info.return_type, true);
-
-    if (sym_err != ERR_OK) {
-        clean_symtable();
-        return sym_err;
-    }
-
     err = parse_body();
     if (err != ERR_OK) {
         clean_symtable();
@@ -468,6 +484,7 @@ ErrorCode parse_func() {
 
     // return_type form function body
     found_func->return_type = func_info.return_type;
+    found_func->is_defined = true;
 
     clean_symtable();
     return ERR_OK;
