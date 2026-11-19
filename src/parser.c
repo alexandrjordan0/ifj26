@@ -89,6 +89,15 @@ void func_info_reset() {
     func_info.return_type = TYPE_UNKNOWN;
 }
 
+void reset_program() {
+    token_free(&token);
+    scanner_init();
+    func_info_reset();
+    unparsed_token = false;
+    is_main_func = false;
+    main_count = 0;
+}
+
 void free_arrays() {
     func_info_reset();
 
@@ -241,6 +250,7 @@ ErrorCode parse_func_heads() {
     err = symtable_add_func(symtable, func_info.name, func_info.param_count, func_info.param_types,
                             func_info.param_names, func_info.return_type, false);
 
+    clean_symtable();
     return err;
 }
 
@@ -273,7 +283,7 @@ ErrorCode skip_func_body() {
             return ERR_SYNTAX;
         }
 
-        while (token.type != TOKEN_EOL && token.type != EOF) {
+        while (token.type != TOKEN_EOL && token.type != TOKEN_EOF) {
             GET_TOKEN();
         }
 
@@ -306,6 +316,7 @@ ErrorCode parse_func_set_heads() {
     return ERR_OK;
 }
 
+// MAIN
 ErrorCode parse_program() {
 
     // Initialization
@@ -315,11 +326,46 @@ ErrorCode parse_program() {
     }
     ErrorCode err = fill_symtable(symtable);
     if (err != ERR_OK) {
+        symtable_free(symtable);
+        free_arrays();
         return ERR_INTERNAL;
     }
     init_parser();
 
-    // Core
+    // Core //
+    // 1st Run
+    GET_TOKEN();
+    err = parse_prolog();
+    if (err != ERR_OK) {
+        symtable_free(symtable);
+        free_arrays();
+        return err;
+    }
+
+    GET_TOKEN();
+    err = parse_func_set_heads();
+    if (err != ERR_OK) {
+        symtable_free(symtable);
+        free_arrays();
+        return err;
+    }
+
+    if (token.type != TOKEN_EOF) {
+        symtable_free(symtable);
+        free_arrays();
+        return ERR_SYNTAX;
+    }
+
+    if (main_count == 0) {
+        symtable_free(symtable);
+        free_arrays();
+        return ERR_SEM_UNDEF;
+    }
+
+    // Reset parser & scanner
+    reset_program();
+
+    // 2nd Run
     GET_TOKEN();
     err = parse_prolog();
     if (err != ERR_OK) {
@@ -358,6 +404,7 @@ ErrorCode parse_program() {
     return ERR_OK;
 }
 
+// 2nd Run
 ErrorCode parse_prolog() {
     CHECK_TOKEN(TOKEN_KEYWORD_IMPORT);
 
@@ -480,6 +527,11 @@ ErrorCode parse_func() {
         // Test - 2012
         printf("No func found\n");
         return ERR_SEM_UNDEF;
+    }
+
+    if (found_func->is_defined) {
+        clean_symtable();
+        return ERR_SEM_REDEF;
     }
 
     // return_type form function body
