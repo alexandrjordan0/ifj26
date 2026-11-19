@@ -368,7 +368,6 @@ ErrorCode parse_program() {
 
     // Reset parser & scanner
     reset_program();
-    gen_init();
 
     // 2nd Run
     GET_TOKEN();
