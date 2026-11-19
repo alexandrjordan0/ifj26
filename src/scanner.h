@@ -88,6 +88,16 @@ typedef struct {
 void scanner_init(void);
 
 /**
+ * @brief rewinds the scanner to the beginning of the loaded input
+ */
+void scanner_rewind(void);
+
+/**
+ * @brief frees the input buffer and any buffered token
+ */
+void scanner_free(void);
+
+/**
  * @brief reads next token
  * @param token pointer to Token
  * @return ERR_OK(0), ERR_LEXICAL(1), ERR_INTERNAL(99)
@@ -100,7 +110,7 @@ ErrorCode get_next_token(Token *token);
  */
 void token_free(Token *token);
 
-/*
+/**
 * @brief peeks next token
 * @param token pointer to Token
 * @return ERR_OK(0), ERR_LEXICAL(1), ERR_INTERNAL(99)
