@@ -174,6 +174,7 @@ ErrorCode fill_symtable(SymTable *symtable) {
     return ERR_OK;
 }
 
+// 1st run
 ErrorCode parse_func_heads() {
     ErrorCode err;
     err = parse_main_anot();
@@ -241,6 +242,43 @@ ErrorCode parse_func_heads() {
                             func_info.param_names, func_info.return_type, false);
 
     return err;
+}
+
+ErrorCode skip_func_body() {
+    GET_TOKEN();
+
+    if (token.type == TOKEN_EOL) {
+        GET_TOKEN();
+        CHECK_TOKEN(TOKEN_INDENT);
+
+        int depth = 1;
+
+        while (depth > 0) {
+            GET_TOKEN();
+
+            if (token.type == TOKEN_EOF) {
+                return ERR_SYNTAX;
+            }
+
+            if (token.type == TOKEN_INDENT) {
+                depth++;
+            } else if (token.type == TOKEN_DEDENT) {
+                depth--;
+            }
+        }
+
+        return ERR_OK;
+    } else {
+        if (token.type == TOKEN_EOF) {
+            return ERR_SYNTAX;
+        }
+
+        while (token.type != EOL && token.type != EOF) {
+            GET_TOKEN();
+        }
+
+        return ERR_OK;
+    }
 }
 
 ErrorCode parse_program() {
