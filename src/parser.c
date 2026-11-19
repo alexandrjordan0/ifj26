@@ -332,8 +332,9 @@ ErrorCode parse_program() {
     }
     init_parser();
 
-    // Core //
-    // 1st Run
+// Core //
+// 1st Run
+#if 0
     GET_TOKEN();
     err = parse_prolog();
     if (err != ERR_OK) {
@@ -364,6 +365,7 @@ ErrorCode parse_program() {
 
     // Reset parser & scanner
     reset_program();
+#endif
 
     // 2nd Run
     GET_TOKEN();
