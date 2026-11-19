@@ -13,6 +13,27 @@
 #include <stdlib.h>
 #include <string.h>
 
+/*
+ * AI-generated and review by hand:
+ * Prompt:
+ * "Define the basic static variables of the IFJcode26 code generator and write
+ *  empty function stubs according to the header file codegenerator.h, containing
+ *  only NULL pointer checks of the arguments. Generated code is buffered in
+ *  string_t instead of being printed directly: finished user functions go to
+ *  one buffer, the body of the function currently being generated to another,
+ *  and its DEFVARs to a separate buffer so they are emitted only once at the
+ *  start of the function.
+ *
+ *  Keep a pointer to the buffer emit currently writes to, a flag whether we
+ *  are inside a function, a counter for unique label ids and whether the
+ *  current function returns Unit."
+ *
+ * Follow-up prompt:
+ * "Track whether the last generated statement was an expression, so a function
+ *  without explicit return returns the value of its last expression, or () if
+ *  the block ends with a definition, assignment, if or while."
+ */
+
 // buffer with finished user functions
 static string_t code;
 
@@ -88,6 +109,14 @@ static void emit(const char *fmt, ...) {
     }
 }
 
+/*
+ * AI-generated and review by hand:
+ * Prompt:
+ * "Write in C fuction emit_string_const(const char *s), that to current_buffer buffer
+ *  write string constant IFJcode26 that looks like: string@... Characters witch ascii code 0-32,
+ *  '#', '\\' and chars >= 127 must be writeen as escape sekvence \xyz.
+ *  When there is error call error_exit(ERR_INTERNAL, ...)."
+ */
 static void emit_string_const(const char *s) {
     if (s == NULL) {
         error_exit(ERR_INTERNAL, "emit_string_const: NULL string");
@@ -128,6 +157,20 @@ static bool is_builtin(const char *name) {
     }
     return false;
 }
+
+/*
+ * AI-generated.
+ * Prompt:
+ * "Write the IFJ26 builtin functions print, readLine, readInt, readDouble,
+ *  readBoolean, toStr, toInt, strLength, subStr, ord and chr in IFJcode26.
+ *  Arguments are on the data stack and the return value is left on it.
+ *  Unit is represented as nil@nil and printed as (). subStr exits with
+ *  error 40 on invalid indices."
+ *
+ * Follow-up prompt:
+ * "Add 32-bit Int overflow handling a range check
+ *  in readInt and saturation in toInt."
+ */
 
 // builtin functions, arguments are on data stack
 // return value is left on data stack
@@ -462,6 +505,19 @@ static void emit_int_wrap(Type operand_type) {
     }
 }
 
+/*
+ * AI-generated and review by hand:
+ * Prompt:
+ * "Fill in the switch cases of gen_expr_op for each PrecSymbol operator using
+ *  IFJcode26 stack instructions: ADDS, SUBS, MULS, DIVS or IDIVS according to
+ *  the operand type, EQS, LTS, GTS and NOTS. For string + use CONCAT with helper
+ *  variables GF@$tmp1 and GF@$tmp2, generate <= and >= as negated GTS and LTS
+ *  and unary minus as multiplication by minus one. Leave && and || empty, they
+ *  are handled by gen_logic_start and gen_logic_end."
+ *
+ * Follow-up prompt:
+ * "After Int operations call $wrap32 using emit_int_wrap."
+ */
 void gen_expr_op(PrecSymbol op, Type operand_type) {
     switch (op) {
     case PREC_SYM_PLUS:
