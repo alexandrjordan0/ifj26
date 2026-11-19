@@ -23,6 +23,12 @@ static int pending_dedents = 0; // amount of DEDENT tokens to be emited
 static bool pending_indent = false;
 static int paren_depth = 0; // parentehsis nesting
 
+// input is stored here for more scans in the future
+static char *input = NULL;
+static size_t input_len = 0;
+static size_t input_pos = 0;
+static bool input_loaded = false;
+
 static int look_ahead[2];
 static int la_count = 0;
 
@@ -31,7 +37,7 @@ static ErrorCode lookahead_error;
 static bool lookahead_ready = false;
 static bool reading_lookahead = false;
 
-void scanner_init(void) {
+static void reset_scanner_state(void) {
     line = 1;
     col = 0;
     at_line_start = true;
@@ -42,17 +48,100 @@ void scanner_init(void) {
 
     pending_dedents = 0;
     pending_indent = false;
-
     paren_depth = 0;
 
     look_ahead[0] = EOF;
     look_ahead[1] = EOF;
     la_count = 0;
+
+    if (lookahead_ready) {
+        token_free(&lookahead_token);
+    }
+    memset(&lookahead_token, 0, sizeof lookahead_token);
+    lookahead_error = ERR_OK;
+    lookahead_ready = false;
+    reading_lookahead = false;
+}
+
+/* Read stdin once. Later scanner passes use the same in-memory source. */
+static ErrorCode load_input(void) {
+    if (input_loaded) {
+        return ERR_OK;
+    }
+
+    size_t capacity = 4096;
+    size_t length = 0;
+    char *buffer = malloc(capacity);
+    if (buffer == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    int c;
+    while ((c = getc(stdin)) != EOF) {
+        if (length == capacity) {
+            if (capacity > (size_t)-1 / 2) {
+                free(buffer);
+                return ERR_INTERNAL;
+            }
+
+            size_t new_capacity = capacity * 2;
+            char *new_buffer = realloc(buffer, new_capacity);
+            if (new_buffer == NULL) {
+                free(buffer);
+                return ERR_INTERNAL;
+            }
+
+            buffer = new_buffer;
+            capacity = new_capacity;
+        }
+
+        buffer[length++] = (char)(unsigned char)c;
+    }
+
+    if (ferror(stdin)) {
+        free(buffer);
+        return ERR_INTERNAL;
+    }
+
+    input = buffer;
+    input_len = length;
+    input_pos = 0;
+    input_loaded = true;
+    return ERR_OK;
+}
+
+void scanner_init(void) {
+    /* Start a new input stream. It will be loaded on the first token request. */
+    reset_scanner_state();
+    free(input);
+    input = NULL;
+    input_len = 0;
+    input_pos = 0;
+    input_loaded = false;
+}
+
+void scanner_rewind(void) {
+    /* Keep the source buffer, but restart scanning from its first character. */
+    input_pos = 0;
+    reset_scanner_state();
+}
+
+void scanner_free(void) {
+    reset_scanner_state();
+    free(input);
+    input = NULL;
+    input_len = 0;
+    input_pos = 0;
+    input_loaded = false;
 }
 
 static void fill_lookahead(int n) {
     while (la_count < n) {
-        look_ahead[la_count++] = getc(stdin);
+        int c = EOF;
+        if (input_pos < input_len) {
+            c = (unsigned char)input[input_pos++];
+        }
+        look_ahead[la_count++] = c;
     }
 }
 
@@ -361,6 +450,15 @@ static ErrorCode finish_string(Token *token, string_t *buf) {
 /* MAIN FUNCTION          */
 /*------------------------*/
 ErrorCode get_next_token(Token *token) {
+    if (token == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    ErrorCode input_error = load_input();
+    if (input_error != ERR_OK) {
+        return input_error;
+    }
+
     if (lookahead_ready && !reading_lookahead) {
         ErrorCode error = lookahead_error;
 
@@ -1001,6 +1099,10 @@ ErrorCode get_next_token(Token *token) {
 }
 
 ErrorCode peek_next_token(Token **token) {
+    if (token == NULL) {
+        return ERR_INTERNAL;
+    }
+
     if (!lookahead_ready) {
         reading_lookahead = true;
         lookahead_error = get_next_token(&lookahead_token);
