@@ -6,6 +6,7 @@
  */
 
 #include "parser.h"
+#include "codegenerator.h"
 #include "error.h"
 #include "precedence.h"
 #include "scanner.h"
@@ -23,6 +24,7 @@ SymTable *symtable;
 
 VarInfo var_info;
 char *var_name;
+char *main_name;
 FuncInfo func_info;
 
 static bool unparsed_token = false;
@@ -61,13 +63,13 @@ static size_t param_capacity = PARAM_ARRAY_SIZE;
 void init_arrays() {
     Type *type_arr = malloc(sizeof(*type_arr) * param_capacity);
     if (type_arr == NULL) {
-        error_exit(ERR_INTERNAL, "%d: Failed to allocate param_types (Parser)\n", ERR_INTERNAL);
+        error_exit(ERR_INTERNAL, "%d: Failed to allocate param_types (Parser)", ERR_INTERNAL);
     }
 
     char **name_arr = calloc(param_capacity, sizeof(*name_arr));
     if (name_arr == NULL) {
         free(type_arr);
-        error_exit(ERR_INTERNAL, "%d: Failed to allocate param_names (Parser)\n", ERR_INTERNAL);
+        error_exit(ERR_INTERNAL, "%d: Failed to allocate param_names (Parser)", ERR_INTERNAL);
     }
 
     param_names_buffer = name_arr;
@@ -110,12 +112,13 @@ void free_arrays() {
     param_capacity = PARAM_ARRAY_SIZE;
 }
 
-void init_parser() {
+void parser_init() {
     init_arrays();
     func_info_reset();
     unparsed_token = false;
     is_main_func = false;
     main_count = 0;
+    main_name = NULL;
 }
 
 void clean_symtable() {
@@ -330,7 +333,7 @@ ErrorCode parse_program() {
         free_arrays();
         return ERR_INTERNAL;
     }
-    init_parser();
+    parser_init();
 
     // Core //
     // 1st Run
@@ -365,6 +368,7 @@ ErrorCode parse_program() {
 
     // Reset parser & scanner
     reset_program();
+    gen_init();
 
     // 2nd Run
     GET_TOKEN();
@@ -390,17 +394,21 @@ ErrorCode parse_program() {
     }
 
     // No Main?
-    if (main_count == 0) {
+    if (main_count == 0 || main_name == NULL) {
         symtable_free(symtable);
         free_arrays();
-        // Test-2012
-        printf("No @main\n");
         return ERR_SEM_UNDEF;
     }
+
+    gen_finish(main_name);
 
     // Cleaning
     symtable_free(symtable);
     free_arrays();
+    token_free(&token);
+    scanner_free();
+    free(main_name);
+    main_name = NULL;
 
     return ERR_OK;
 }
@@ -510,6 +518,10 @@ ErrorCode parse_func() {
         return err;
     } // CURR. TOKEN = TOKEN_ASSIGN
 
+    bool returns_unit = func_info.return_type == TYPE_UNIT;
+
+    gen_func_start(func_info.name, func_info.param_count, func_info.param_names, 0, returns_unit);
+
     err = parse_body();
     if (err != ERR_OK) {
         clean_symtable();
@@ -525,8 +537,6 @@ ErrorCode parse_func() {
     FuncInfo *found_func = symtable_find_func(symtable, func_info.name);
     if (found_func == NULL) {
         clean_symtable();
-        // Test - 2012
-        printf("No func found\n");
         return ERR_SEM_UNDEF;
     }
 
@@ -539,6 +549,16 @@ ErrorCode parse_func() {
     found_func->return_type = func_info.return_type;
     found_func->is_defined = true;
 
+    // Stores main functions identificator
+    if (is_main_func) {
+        main_name = strdup(func_info.name);
+        if (main_name == NULL) {
+            clean_symtable();
+            return ERR_INTERNAL;
+        }
+    }
+
+    gen_func_end();
     clean_symtable();
     return ERR_OK;
 }
@@ -604,14 +624,14 @@ ErrorCode parse_param() {
         Type *type_arr =
             realloc(func_info.param_types, sizeof(*func_info.param_types) * new_capacity);
         if (type_arr == NULL) {
-            error_exit(ERR_INTERNAL, "%d: Failed to realloc param_types (Parser)\n", ERR_INTERNAL);
+            error_exit(ERR_INTERNAL, "%d: Failed to realloc param_types (Parser)", ERR_INTERNAL);
         }
 
         func_info.param_types = type_arr;
 
         char **names_arr = realloc(param_names_buffer, sizeof(*param_names_buffer) * new_capacity);
         if (names_arr == NULL) {
-            error_exit(ERR_INTERNAL, "%d: Failed to realloc param_names (Parser)\n", ERR_INTERNAL);
+            error_exit(ERR_INTERNAL, "%d: Failed to realloc param_names (Parser)", ERR_INTERNAL);
         }
 
         param_names_buffer = names_arr;
@@ -795,6 +815,11 @@ ErrorCode parse_body() {
                    !same_types(func_info.return_type, result.result_type)) {
             return ERR_SEM_TYPES;
         }
+
+        if (func_info.return_type == TYPE_DOUBLE && result.result_type == TYPE_INT &&
+            result.last_statement == STAT_EXPRESSION) {
+            gen_conv_top_int2float();
+        }
     } else {
         Type decared_type = func_info.return_type;
         Type expression_type = TYPE_UNKNOWN;
@@ -816,6 +841,12 @@ ErrorCode parse_body() {
         }
 
         CHECK_TOKEN(TOKEN_EOL);
+
+        if (decared_type == TYPE_DOUBLE && expression_type == TYPE_INT) {
+            gen_conv_top_int2float();
+        }
+
+        gen_discard_top();
     }
 
     return ERR_OK; // Curr. Token = TOKEN_EOL
@@ -956,6 +987,10 @@ ErrorCode parse_command_simple(block_result *result) {
             result->last_statement = STAT_RETURN;
             result->returns_always = true;
             unparsed_token = true;
+
+            gen_push_unit();
+            gen_return();
+
             break;
         }
 
@@ -974,6 +1009,11 @@ ErrorCode parse_command_simple(block_result *result) {
             return ERR_SEM_TYPES;
         }
 
+        if (declaration_type == TYPE_DOUBLE && expression_type == TYPE_INT) {
+            gen_conv_top_int2float();
+        }
+
+        gen_return();
         result->last_statement = STAT_RETURN;
         result->returns_always = true;
         break;
@@ -1017,6 +1057,8 @@ ErrorCode parse_command_simple(block_result *result) {
         result->last_statement = STAT_EXPRESSION;
         unparsed_token = true;
 
+        gen_discard_top();
+
         break;
     default:
         return ERR_SYNTAX;
@@ -1038,8 +1080,6 @@ ErrorCode parse_command_simple_id(block_result *result) {
 
         VarInfo *found_var = symtable_find_var(symtable, var_name);
         if (found_var == NULL) {
-            // Test - 2012
-            printf("No variable or val found\n");
             return ERR_SEM_UNDEF;
         }
 
@@ -1060,6 +1100,12 @@ ErrorCode parse_command_simple_id(block_result *result) {
                 return ERR_SEM_TYPES;
             }
 
+            if (found_var->type == TYPE_DOUBLE && expression_type == TYPE_INT) {
+                gen_conv_top_int2float();
+            }
+
+            gen_assign(var_name, found_var->scope_depth);
+
             result->result_type = TYPE_UNIT;
             result->last_statement = STAT_OTHER;
             return ERR_OK;
@@ -1078,6 +1124,8 @@ ErrorCode parse_command_simple_id(block_result *result) {
 
     result->result_type = expression_type;
     result->last_statement = STAT_EXPRESSION;
+
+    gen_discard_top();
     return ERR_OK;
 }
 
@@ -1131,6 +1179,17 @@ ErrorCode parse_variable() {
         var_name = NULL;
         return sym_err;
     }
+
+    VarInfo *found_var = symtable_find_var(symtable, var_name);
+    if (found_var == NULL) {
+        return ERR_INTERNAL;
+    }
+    if (found_var->type == TYPE_DOUBLE && expression_type == TYPE_INT) {
+        gen_conv_top_int2float();
+    }
+
+    gen_defvar(var_name, found_var->scope_depth);
+    gen_assign(var_name, found_var->scope_depth);
 
     // Cleaning
     free(var_name);
@@ -1210,6 +1269,17 @@ ErrorCode parse_value() {
         var_name = NULL;
         return sym_err;
     }
+
+    VarInfo *found_var = symtable_find_var(symtable, var_name);
+    if (found_var == NULL) {
+        return ERR_INTERNAL;
+    }
+    if (found_var->type == TYPE_DOUBLE && expression_type == TYPE_INT) {
+        gen_conv_top_int2float();
+    }
+
+    gen_defvar(var_name, found_var->scope_depth);
+    gen_assign(var_name, found_var->scope_depth);
 
     // Cleaning
     free(var_name);
@@ -1302,6 +1372,9 @@ ErrorCode parse_if_statement(block_result *result) {
     // Already has token
     CHECK_TOKEN(TOKEN_KEYWORD_THEN);
 
+    int label_id = gen_new_label_id();
+    gen_if_start(label_id);
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
@@ -1311,10 +1384,13 @@ ErrorCode parse_if_statement(block_result *result) {
     } // Curr. TOKEN == TOKEN_DEDENT
 
     GET_TOKEN();
+    gen_if_else(label_id);
     err = parse_vol_else_block(&else_result);
     if (err != ERR_OK) {
         return err;
     } // Curr. TOKEN == TOKEN_DEDENT
+
+    gen_if_end(label_id);
 
     if (then_result.returns_always && else_result.returns_always) {
         result->returns_always = true;
@@ -1393,6 +1469,9 @@ ErrorCode parse_while_statement(block_result *result) {
     Type condition_type = TYPE_UNKNOWN;
     block_result while_result = init_block_result();
 
+    int label_id = gen_new_label_id();
+    gen_while_header(label_id);
+
     GET_TOKEN();
     err = parse_expression(&token, symtable, &condition_type);
     if (err != ERR_OK) {
@@ -1406,6 +1485,8 @@ ErrorCode parse_while_statement(block_result *result) {
     // Token si read by expression
     CHECK_TOKEN(TOKEN_KEYWORD_DO);
 
+    gen_while_cond(label_id);
+
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_EOL);
 
@@ -1413,6 +1494,8 @@ ErrorCode parse_while_statement(block_result *result) {
     if (err != ERR_OK) {
         return err;
     }
+
+    gen_while_end(label_id);
 
     result->returns_always = false;
     result->result_type = TYPE_UNIT;
