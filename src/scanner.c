@@ -4,7 +4,6 @@
 
 #include "scanner.h"
 #include "str.h"
-
 #include <errno.h>
 #include <math.h>
 #include <stdbool.h>

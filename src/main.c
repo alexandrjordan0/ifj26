@@ -3,16 +3,16 @@
 // Authors: Alexandr Jordán (xjordaa00)
 // Translator: gcc 16.2.1
 
-#include <stdio.h>
-#include <stdlib.h>
+#include "parser.h"
+#include "scanner.h"
 
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
-    // TODO init
+    scanner_init();
 
     printf(".IFJcode26\n");
 
-    return EXIT_SUCCESS;
+    return parse_program();
 }
