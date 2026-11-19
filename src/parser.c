@@ -48,6 +48,13 @@ static size_t main_count = 0;
         }                                                                                          \
     } while (0)
 
+#define CHECK_SYM(something)                                                                       \
+    do {                                                                                           \
+        if (something != ERR_OK) {                                                                 \
+            return something;                                                                      \
+        }                                                                                          \
+    } while (0)
+
 static char **param_names_buffer = NULL;
 static size_t param_capacity = PARAM_ARRAY_SIZE;
 
@@ -130,6 +137,112 @@ static block_result init_block_result() {
     return block;
 }
 
+ErrorCode fill_symtable(SymTable *symtable) {
+    ErrorCode sym_err;
+    sym_err = symtable_add_func(symtable, "print", 1, (Type[]){TYPE_ANY}, (const char *[]){"value"},
+                                TYPE_UNIT, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "readLine", 0, NULL, NULL, TYPE_STRING, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "readInt", 0, NULL, NULL, TYPE_INT, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "readDouble", 0, NULL, NULL, TYPE_DOUBLE, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "readBoolean", 0, NULL, NULL, TYPE_BOOL, true);
+    CHECK_SYM(sym_err);
+
+    sym_err = symtable_add_func(symtable, "toStr", 1, (Type[]){TYPE_ANY}, (const char *[]){"value"},
+                                TYPE_STRING, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "toInt", 1, (Type[]){TYPE_DOUBLE},
+                                (const char *[]){"value"}, TYPE_INT, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "strLength", 1, (Type[]){TYPE_STRING},
+                                (const char *[]){"string"}, TYPE_INT, true);
+    CHECK_SYM(sym_err);
+
+    sym_err = symtable_add_func(symtable, "subStr", 3, (Type[]){TYPE_STRING, TYPE_INT, TYPE_INT},
+                                (const char *[]){"s", "start", "length"}, TYPE_STRING, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "ord", 2, (Type[]){TYPE_STRING, TYPE_INT},
+                                (const char *[]){"s", "index"}, TYPE_INT, true);
+    CHECK_SYM(sym_err);
+    sym_err = symtable_add_func(symtable, "chr", 1, (Type[]){TYPE_INT}, (const char *[]){"i"},
+                                TYPE_STRING, true);
+    CHECK_SYM(sym_err);
+
+    return ERR_OK;
+}
+
+ErrorCode parse_func_heads() {
+    ErrorCode err;
+    err = parse_main_anot();
+    if (err != ERR_OK) {
+        return err;
+    }
+
+    if (main_count > 1) {
+        return ERR_SEM_REDEF;
+    }
+
+    GET_TOKEN();
+    CHECK_TOKEN(TOKEN_IDENTIFIER);
+
+    func_info.name = strdup(token.value.str_value.data);
+    if (func_info.name == NULL) {
+        return ERR_INTERNAL;
+    }
+
+    if (!symtable_scope_push(symtable)) {
+        func_info_reset();
+        return ERR_INTERNAL;
+    }
+
+    // GET_TOKEN with symtable memeory clean
+    if (unparsed_token) {
+        unparsed_token = false;
+    } else {
+        token_free(&token);
+        err = get_next_token(&token);
+        if (err != ERR_OK) {
+            clean_symtable();
+            return err;
+        }
+    }
+
+    // CHECK_TOKEN with clean memory
+    if (token.type == TOKEN_LEFTPAR) {
+        err = parse_param_set();
+        if (err != ERR_OK) {
+            clean_symtable();
+            return err;
+        } // CURR. TOKEN = TOKEN_RIGHTPAR
+        // Check for LIT_UNIT TOKEN
+    } else if (token.type == TOKEN_LIT_UNIT) {
+        func_info.param_count = 0;
+    } else {
+        clean_symtable();
+        return ERR_SYNTAX;
+    }
+
+    // Main function (no parameter)
+    if (is_main_func && func_info.param_count != 0) {
+        clean_symtable();
+        return ERR_SEM_ARGS;
+    }
+
+    err = parse_return_type();
+    if (err != ERR_OK) {
+        clean_symtable();
+        return err;
+    } // CURR. TOKEN = TOKEN_ASSIGN
+
+    err = symtable_add_func(symtable, func_info.name, func_info.param_count, func_info.param_types,
+                            func_info.param_names, func_info.return_type, false);
+
+    return err;
+}
+
 ErrorCode parse_program() {
 
     // Initialization
@@ -137,11 +250,15 @@ ErrorCode parse_program() {
     if (symtable == NULL) {
         return ERR_INTERNAL;
     }
+    ErrorCode err = fill_symtable(symtable);
+    if (err != ERR_OK) {
+        return ERR_INTERNAL;
+    }
     init_parser();
 
     // Core
     GET_TOKEN();
-    ErrorCode err = parse_prolog();
+    err = parse_prolog();
     if (err != ERR_OK) {
         symtable_free(symtable);
         free_arrays();
@@ -226,7 +343,6 @@ ErrorCode parse_func() {
         return err;
     } // CURRENT TOKEN = TOKEN_KEYWORD_DEF
 
-    // TODO - CHECK if correct
     if (main_count > 1) {
         return ERR_SEM_REDEF;
     }
@@ -234,7 +350,6 @@ ErrorCode parse_func() {
     GET_TOKEN();
     CHECK_TOKEN(TOKEN_IDENTIFIER);
 
-    // Maybe I will have to use my own function
     func_info.name = strdup(token.value.str_value.data);
     if (func_info.name == NULL) {
         return ERR_INTERNAL;
