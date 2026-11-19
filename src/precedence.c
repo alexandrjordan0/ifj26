@@ -6,7 +6,7 @@
  */
 
 #include "precedence.h"
-// TODO #include "codegenerator.h"
+#include "codegenerator.h"
 #include <stdlib.h>
 
 typedef enum {
@@ -21,6 +21,15 @@ typedef enum {
     ACT_EQUAL, // =
     ACT_REDUCE // >
 } PrecAction;
+
+// label id of shifted && or || waiting for reduction
+typedef struct LogicLabel {
+    int label_id;
+    struct LogicLabel *next;
+} LogicLabel;
+
+// && and || are reduced in reverse order of shifting, last shifted is on top
+static LogicLabel *logic_labels = NULL;
 
 #define PREC_TABLE_SIZE (PREC_SYM_DOLLAR + 1)
 
@@ -157,6 +166,34 @@ static bool stack_insert_stop_after_top_terminal(PrecStack *stack) {
 
     stop_item->next = curr;
     prev->next = stop_item;
+
+    return true;
+}
+
+static bool logic_label_push(int label_id) {
+    LogicLabel *item = malloc(sizeof(LogicLabel));
+    if (item == NULL) {
+        return false;
+    }
+
+    item->label_id = label_id;
+    item->next = logic_labels;
+    logic_labels = item;
+
+    return true;
+}
+
+static bool logic_label_pop(int *label_id) {
+    if (logic_labels == NULL) {
+        return false;
+    }
+
+    LogicLabel *item = logic_labels;
+    if (label_id != NULL) {
+        *label_id = item->label_id;
+    }
+    logic_labels = item->next;
+    free(item);
 
     return true;
 }
@@ -435,7 +472,7 @@ static ErrorCode reduce(PrecStack *stack) {
                 return ERR_SEM_TYPES;
             }
             result_type = TYPE_BOOL;
-            // TODO: codegen_not();
+            gen_expr_op(PREC_SYM_NOT, TYPE_BOOL);
             break;
         }
         // E -> - E
@@ -444,7 +481,7 @@ static ErrorCode reduce(PrecStack *stack) {
                 return ERR_SEM_TYPES;
             }
             result_type = items[0]->data_type;
-            // TODO: codegen negation
+            gen_expr_op(PREC_SYM_UMINUS, result_type);
             break;
         }
         return ERR_SYNTAX;
@@ -465,7 +502,24 @@ static ErrorCode reduce(PrecStack *stack) {
                 return err;
             }
 
-            // TODO codegen conv a op
+            if (op == PREC_SYM_AND || op == PREC_SYM_OR) {
+                // left operand was tested when operator was shifted
+                int label_id = 0;
+                if (!logic_label_pop(&label_id)) {
+                    return ERR_INTERNAL;
+                }
+                gen_logic_end(op, label_id);
+                break;
+            }
+
+            if (conv == CONV_LEFT_INT) {
+                gen_conv_second_int2float();
+            } else if (conv == CONV_RIGHT_INT) {
+                gen_conv_top_int2float();
+            }
+
+            Type operand_type = conv != CONV_NONE ? TYPE_DOUBLE : items[2]->data_type;
+            gen_expr_op(op, operand_type);
             break;
         }
         return ERR_SYNTAX;
@@ -536,7 +590,8 @@ static ErrorCode parse_call(const char *name, Token *current_token, SymTable *sy
 
                 Type param_type = func->param_types[arg_count];
                 if (param_type == TYPE_DOUBLE && arg_type == TYPE_INT) {
-                    // TODO codegen INT2FLOATS
+                    // argument is on top of stack
+                    gen_conv_top_int2float();
                 } else if (param_type != TYPE_ANY && param_type != arg_type) {
                     return ERR_SEM_ARGS;
                 }
@@ -590,7 +645,7 @@ static ErrorCode parse_call(const char *name, Token *current_token, SymTable *sy
         *ret_type = func->return_type;
     }
 
-    // TODO gen_call(name);
+    gen_call(name);
 
     return ERR_OK;
 }
@@ -614,7 +669,7 @@ static ErrorCode parse_variable(const char *name, SymTable *symtable, Type *out_
 
     *out_type = var->type;
 
-    // TODO gen_push_var(name, FRAME_LF, var->scope_depth);
+    gen_push_var(name, var->scope_depth);
 
     return ERR_OK;
 }
@@ -652,7 +707,8 @@ static ErrorCode parse_identifier(Token *current_token, SymTable *symtable, Type
     return status;
 }
 
-ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *result_type) {
+static ErrorCode parse_expression_inner(Token *current_token, SymTable *symtable,
+                                        Type *result_type) {
     if (current_token == NULL || symtable == NULL || result_type == NULL) {
         return ERR_INTERNAL;
     }
@@ -723,10 +779,19 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
                 break;
             }
 
-            // TODO if literal, generate PUSH
-            // if (input_sym == PREC_SYM_ID) {
-            //     gen_push_literal(current_token);
-            // }
+            if (input_sym == PREC_SYM_ID) {
+                gen_push_literal(current_token);
+            }
+
+            // left operand is already generated, result decides if right operand is skipped
+            if (input_sym == PREC_SYM_AND || input_sym == PREC_SYM_OR) {
+                int label_id = gen_new_label_id();
+                if (!logic_label_push(label_id)) {
+                    stack_free(stack);
+                    return ERR_INTERNAL;
+                }
+                gen_logic_start(input_sym, label_id);
+            }
 
             // add input symbol to top
             if (!stack_push(stack, input_sym, input_type)) {
@@ -794,5 +859,17 @@ ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *resul
 
     // free stack
     stack_free(stack);
+    return status;
+}
+
+ErrorCode parse_expression(Token *current_token, SymTable *symtable, Type *result_type) {
+    LogicLabel *labels_bottom = logic_labels;
+
+    ErrorCode status = parse_expression_inner(current_token, symtable, result_type);
+
+    // after error labels of unreduced && and || stay on stack
+    while (logic_labels != labels_bottom && logic_label_pop(NULL)) {
+    }
+
     return status;
 }
