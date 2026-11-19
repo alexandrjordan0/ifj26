@@ -91,7 +91,7 @@ void func_info_reset() {
 
 void reset_program() {
     token_free(&token);
-    scanner_init();
+    scanner_rewind();
     func_info_reset();
     unparsed_token = false;
     is_main_func = false;
@@ -332,9 +332,9 @@ ErrorCode parse_program() {
     }
     init_parser();
 
-// Core //
-// 1st Run
-#if 0
+    // Core //
+    // 1st Run
+
     GET_TOKEN();
     err = parse_prolog();
     if (err != ERR_OK) {
@@ -365,7 +365,6 @@ ErrorCode parse_program() {
 
     // Reset parser & scanner
     reset_program();
-#endif
 
     // 2nd Run
     GET_TOKEN();
