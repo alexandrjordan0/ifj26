@@ -3,7 +3,7 @@
 ## Základní informace a odpovědnost
 
 - Odpovědná osoba: Girab
-- Přiřazené soubory: src/hashtable.c a src/hashtable.h
+- Přiřazené soubory: src/hashtable.c, src/hashtable.h, src/symtable.c a src/symtable.h
 - Varianta zadání: TRP izp což představuje tabulku s rozptýlenými položkami s otevřenou adresací
 - Přísný zákaz: na tuto vyhledávací datovou strukturu je podle pravidel projektu přísně zakázáno použít nástroje umělé inteligence
 
