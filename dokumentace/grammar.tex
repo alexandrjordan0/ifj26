@@ -1,0 +1,58 @@
+1 & Program $\rightarrow$ Prolog FuncSet EOF & \{IMPORT\} \\
+2 & Prolog $\rightarrow$ IMPORT ID DOT MUL EOL & \{IMPORT\} \\
+3 & FuncSet $\rightarrow$ Func FuncSet & \{MAIN, DEF\} \\
+4 & FuncSet $\rightarrow$ $\varepsilon$ & \{EOF\} \\
+5 & Func $\rightarrow$ MainAnot DEF ID FuncParams RetType ASSIGN Body & \{MAIN, DEF\} \\
+6 & FuncParams $\rightarrow$ litUNIT & \{litUNIT\} \\
+7 & FuncParams $\rightarrow$ LPAR ParamSet RPAR & \{LPAR\} \\
+8 & MainAnot $\rightarrow$ MAIN MainAnotEOL & \{MAIN\} \\
+9 & MainAnot $\rightarrow$ $\varepsilon$ & \{DEF\} \\
+10 & MainAnotEOL $\rightarrow$ EOL & \{EOL\} \\
+11 & MainAnotEOL $\rightarrow$ $\varepsilon$ & \{DEF\} \\
+12 & ParamSet $\rightarrow$ Param ParamNext & \{ID\} \\
+13 & ParamSet $\rightarrow$ $\varepsilon$ & \{RPAR\} \\
+14 & ParamNext $\rightarrow$ COMMA ParamNextRest & \{COMMA\} \\
+15 & ParamNext $\rightarrow$ $\varepsilon$ & \{RPAR\} \\
+16 & ParamNextRest $\rightarrow$ Param ParamNext & \{ID\} \\
+17 & ParamNextRest $\rightarrow$ $\varepsilon$ & \{RPAR\} \\
+18 & Param $\rightarrow$ ID COLON Type & \{ID\} \\
+19 & Type $\rightarrow$ INT & \{INT\} \\
+20 & Type $\rightarrow$ STRING & \{STRING\} \\
+21 & Type $\rightarrow$ DOUBLE & \{DOUBLE\} \\
+22 & Type $\rightarrow$ UNIT & \{UNIT\} \\
+23 & Type $\rightarrow$ BOOLEAN & \{BOOLEAN\} \\
+24 & RetType $\rightarrow$ COLON Type & \{COLON\} \\
+25 & RetType $\rightarrow$ $\varepsilon$ & \{ASSIGN\} \\
+26 & Body $\rightarrow$ Expression EOL & \{ID, MINUS, litINT, litDOUBLE, litSTRING, litUNIT, NOT, TRUE, FALSE, LPAR\} \\
+27 & Body $\rightarrow$ EOL Block & \{EOL\} \\
+28 & Variable $\rightarrow$ VAR ID VariableType ASSIGN Expression & \{VAR\} \\
+29 & VariableType $\rightarrow$ COLON Type & \{COLON\} \\
+30 & VariableType $\rightarrow$ $\varepsilon$ & \{ASSIGN\} \\
+31 & Value $\rightarrow$ VAL ID ValueType ASSIGN Expression & \{VAL\} \\
+32 & ValueType $\rightarrow$ COLON Type & \{COLON\} \\
+33 & ValueType $\rightarrow$ $\varepsilon$ & \{ASSIGN\} \\
+34 & Block $\rightarrow$ INDENT Command DEDENT & \{INDENT\} \\
+35 & CommandSet $\rightarrow$ Command & \{VAR, VAL, RETURN, ID, MINUS, litINT, litDOUBLE, litSTRING, litUNIT, NOT, TRUE, FALSE, LPAR, IF, WHILE, EOL\} \\
+36 & CommandSet $\rightarrow$ $\varepsilon$ & \{DEDENT\} \\
+37 & CommandNext $\rightarrow$ Separator CommandSet & \{EOL, SEMICOLON\} \\
+38 & CommandNext $\rightarrow$ $\varepsilon$ & \{DEDENT\} \\
+39 & Command $\rightarrow$ CommandSimple CommandNext & \{VAR, VAL, RETURN, ID, MINUS, litINT, litDOUBLE, litSTRING, litUNIT, NOT, TRUE, FALSE, LPAR\} \\
+40 & Command $\rightarrow$ CommandComplex CommandSet & \{IF, WHILE\} \\
+41 & Command $\rightarrow$ EOL CommandSet & \{EOL\} \\
+42 & CommandSimple $\rightarrow$ Variable & \{VAR\} \\
+43 & CommandSimple $\rightarrow$ Value & \{VAL\} \\
+44 & CommandSimple $\rightarrow$ RETURN RetCommand & \{RETURN\} \\
+45 & CommandSimple $\rightarrow$ ID ASSIGN Expression & \{ID\} \\
+46 & CommandSimple $\rightarrow$ Expression & \{ID, MINUS, litINT, litDOUBLE, litSTRING, litUNIT, NOT, TRUE, FALSE, LPAR\} \\
+47 & CommandComplex $\rightarrow$ IfStatement & \{IF\} \\
+48 & CommandComplex $\rightarrow$ WhileStatement & \{WHILE\} \\
+49 & RetCommand $\rightarrow$ Expression & \{ID, MINUS, litINT, litDOUBLE, litSTRING, litUNIT, NOT, TRUE, FALSE, LPAR\} \\
+50 & RetCommand $\rightarrow$ $\varepsilon$ & \{EOL, SEMICOLON, DEDENT\} \\
+51 & Separator $\rightarrow$ SEMICOLON & \{SEMICOLON\} \\
+52 & Separator $\rightarrow$ EOL & \{EOL\} \\
+53 & IfStatement $\rightarrow$ IF Expression THEN EOL Block VolElse & \{IF\} \\
+54 & VolElse $\rightarrow$ ELSE ElseBlock & \{ELSE\} \\
+55 & VolElse $\rightarrow$ $\varepsilon$ & \{VAR, VAL, RETURN, ID, MINUS, litINT, litDOUBLE, litSTRING, litUNIT, NOT, TRUE, FALSE, LPAR, IF, WHILE, DEDENT, EOL\} \\
+56 & ElseBlock $\rightarrow$ EOL Block & \{EOL\} \\
+57 & ElseBlock $\rightarrow$ IfStatement & \{IF\} \\
+58 & WhileStatement $\rightarrow$ WHILE Expression DO EOL Block & \{WHILE\} \\
